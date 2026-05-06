@@ -18,7 +18,7 @@ The agent presents a plan before proceeding, asks clarifying questions when it c
 
 ## Install
 
-### Claude Code
+### Claude Code / Gemini CLI / Codex / Windsurf
 
 ```bash
 npx skills add oodle-ai/discovery-agent-skills -y
@@ -27,25 +27,7 @@ npx skills add oodle-ai/discovery-agent-skills -y
 ### Cursor
 
 ```bash
-npx skills add oodle-ai/discovery-agent-skills --target-agent cursor -y
-```
-
-### Gemini CLI
-
-```bash
-npx skills add oodle-ai/discovery-agent-skills -y
-```
-
-### Codex
-
-```bash
-npx skills add oodle-ai/discovery-agent-skills -y
-```
-
-### Windsurf
-
-```bash
-npx skills add oodle-ai/discovery-agent-skills -y
+npx skills add oodle-ai/discovery-agent-skills --agent cursor -y
 ```
 
 ### Manual
@@ -101,6 +83,13 @@ The skill works best when run from a machine with access to your infrastructure.
 - `gcloud` CLI — GCP resource discovery
 - `az` CLI — Azure resource discovery
 - Access to your code repository (for IaC and dependency detection)
+
+## Platform Plugin Notes
+
+This repository includes plugin metadata files for multiple agent platforms:
+
+- `.claude-plugin/plugin.json` and `.cursor-plugin/plugin.json` — Identical metadata for Claude Code and Cursor respectively. These files must be kept in sync.
+- `gemini-extension.json` — Minimal metadata for Gemini CLI. Gemini's extension schema supports only `name`, `version`, and `description`.
 
 ## License
 
