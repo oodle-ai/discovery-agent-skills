@@ -878,6 +878,7 @@ Generate the report using the template structure below. Adapt sections based on 
 10. **No architecture diagrams.** ASCII diagrams add clutter. The tool names and scale numbers tell the story.
 11. **Include actual numbers** — node counts, ingestion rates, costs — not placeholders. Approximations are fine and encouraged.
 12. **Save the file** to a discoverable location and open it in the browser.
+13. **Reference the sample report** at `examples/sample-report.html` in this repository for the expected format, tone, and level of detail. Your output should match that style.
 
 ## Rate Limiting & Safety
 

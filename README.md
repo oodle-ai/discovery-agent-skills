@@ -74,6 +74,8 @@ The report is a single self-contained HTML file (no external dependencies) saved
 - Pain points highlighted with recommendations
 - Professional styling suitable for sharing
 
+**See a sample report:** [examples/sample-report.html](examples/sample-report.html) — open it in your browser to see the expected format and level of detail.
+
 ## Requirements
 
 The skill works best when run from a machine with access to your infrastructure. Common tools it leverages (all optional — it skips what's unavailable):
