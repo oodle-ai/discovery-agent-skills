@@ -1,6 +1,6 @@
 ---
 name: oodle-discovery
-description: Discover a company's tech stack, observability stack, infrastructure scale, costs, and pain points across all environments. Produces a tailored HTML report.
+description: Discover a company's tech stack, observability stack, infrastructure scale, costs, and pain points across all environments. Produces a focused executive-level HTML report with bird's-eye view of environments, observability scale numbers, and costs.
 metadata:
   version: "1.0.0"
   author: oodle-ai
@@ -12,7 +12,7 @@ metadata:
 
 # Infrastructure & Observability Discovery
 
-This skill guides the agent through a systematic discovery of a company's tech stack, observability stack, infrastructure scale, costs, and operational pain points. The output is a comprehensive HTML report opened in the user's browser.
+This skill guides the agent through a systematic discovery of a company's tech stack, observability stack, infrastructure scale, costs, and operational pain points. The output is a focused, executive-level HTML report — a bird's-eye view suitable for a buyer or tech champion who needs to quickly understand environments, scale, and costs without operational-level detail.
 
 For install instructions, see [README.md](README.md).
 
@@ -23,6 +23,8 @@ For install instructions, see [README.md](README.md).
 3. **Ask when uncertain.** If information cannot be discovered programmatically, ask the user.
 4. **Plan first.** Always present the discovery plan and get user approval before executing.
 5. **Multi-environment aware.** Discover all environments (dev, staging, prod, etc.) separately.
+6. **Executive-level output.** The report is for a buyer/tech champion. Show aggregate numbers, environment comparisons, and scale — not per-pod or per-node details. Approximations are better than no data.
+7. **Observability scale is critical.** Always measure and report telemetry volumes (metrics samples/sec, log GB/day, trace spans/sec) alongside tool names.
 
 ## Execution Flow
 
@@ -37,11 +39,12 @@ I'll discover your infrastructure and observability setup. Here's my plan:
 2. **Tech Stack Discovery** — Languages, frameworks, databases, message queues, caches
 3. **Infrastructure Discovery** — Cloud provider, compute, networking, storage
 4. **Observability Stack Discovery** — Monitoring, logging, tracing, alerting tools
-5. **Scale Assessment** — Request rates, data volumes, node counts, resource utilization
+5. **Scale Assessment** — Infra scale per environment + observability scale (metrics ingestion rate, log volume, trace throughput, active time series)
 6. **Cost Discovery** — Cloud spend, observability tool costs, license costs
 7. **Pain Points** — Alert fatigue, gaps in coverage, toil, reliability issues
 
 I will only perform read-only operations. No changes will be made to your systems.
+The output will be a focused executive summary — bird's-eye view of your setup, not operational-level detail.
 Shall I proceed?
 ```
 
@@ -197,6 +200,8 @@ jq '[.items[] | select(.metadata.labels.app == "rabbitmq")] | length' /tmp/disco
 
 ### Phase 3: Infrastructure Discovery
 
+**Note:** Collect per-node and per-instance data here for internal analysis, but only report **aggregates** in the final HTML report (total nodes, total vCPU, total memory, instance type families). Do NOT list individual node IPs or per-node utilization in the report.
+
 #### 3.1 Compute
 
 ```bash
@@ -297,42 +302,135 @@ jq -r '.items[] | select(.metadata.name | test("alertmanager")) | "\(.metadata.n
 
 ### Phase 5: Scale Assessment
 
-#### 5.1 Request Volume & Data Volumes
+**Goal:** Produce high-level scale numbers suitable for an executive summary. Focus on aggregate totals across environments, not per-pod or per-node breakdowns.
 
-If Prometheus is available, set up a single port-forward session to run all metrics queries, then clean up:
-
-```bash
-# Set up port-forward for Prometheus queries (used in 5.1 and 5.2)
-kubectl port-forward -n monitoring svc/prometheus 9090:9090 &
-PF_PID=$!
-sleep 2
-
-# Total request rate across services
-curl -s 'http://localhost:9090/api/v1/query?query=sum(rate(http_requests_total[5m]))' 2>/dev/null | jq '.data.result[0].value[1]'
-
-# Metrics ingestion rate
-curl -s 'http://localhost:9090/api/v1/query?query=sum(rate(prometheus_tsdb_head_samples_appended_total[5m]))' 2>/dev/null | jq '.data.result[0].value[1]'
-
-# Clean up port-forward after all queries are done
-kill $PF_PID 2>/dev/null
-```
-
-**Important:** Limit Prometheus queries to 1 per 2 seconds. Always clean up port-forwards after all queries complete.
+#### 5.1 Infrastructure Scale (per environment)
 
 ```bash
-# Log volume (if accessible)
-# Ask user for approximate daily log volume if not discoverable
-
-# Storage usage
-kubectl get pv -o json 2>/dev/null | jq '[.items[].spec.capacity.storage] | map(rtrimstr("Gi") | tonumber) | add'
-```
-
-#### 5.2 Node & Pod Counts
-
-```bash
+# For each cluster/context, collect aggregate numbers only
 kubectl get nodes --no-headers 2>/dev/null | wc -l
 kubectl get pods -A --no-headers 2>/dev/null | wc -l
-kubectl top nodes 2>/dev/null
+kubectl get namespaces --no-headers 2>/dev/null | wc -l
+
+# Total compute capacity (aggregate)
+kubectl get nodes -o json 2>/dev/null | jq '{
+  total_nodes: (.items | length),
+  total_vcpu: ([.items[].status.capacity.cpu | tonumber] | add),
+  total_memory_gi: ([.items[].status.capacity.memory | rtrimstr("Ki") | tonumber / 1048576] | add | floor),
+  instance_types: [.items[].metadata.labels["node.kubernetes.io/instance-type"]] | unique
+}'
+
+# Average utilization (single summary line)
+kubectl top nodes --no-headers 2>/dev/null | awk '{cpu+=$3; mem+=$5; n++} END {printf "Avg CPU: %d%%, Avg Memory: %d%%\n", cpu/n, mem/n}'
+```
+
+#### 5.2 Observability Scale
+
+This is critical — measure the volume of telemetry data flowing through the observability stack.
+
+**Metrics scale:**
+```bash
+# Set up port-forward for Prometheus/VictoriaMetrics/Thanos queries
+# Detect which metrics endpoint is available
+METRICS_SVC=$(kubectl get svc -A -o json 2>/dev/null | jq -r '.items[] | select(.metadata.name | test("prometheus|vmagent|vmselect|thanos-query|mimir-query")) | "\(.metadata.namespace)/\(.metadata.name):\(.spec.ports[0].port)"' | head -1)
+if [ -n "$METRICS_SVC" ]; then
+  NS=$(echo $METRICS_SVC | cut -d/ -f1)
+  SVC_PORT=$(echo $METRICS_SVC | cut -d/ -f2)
+  kubectl port-forward -n $NS svc/${SVC_PORT%:*} 9090:${SVC_PORT#*:} &
+  PF_PID=$!
+  sleep 3
+
+  # Active time series count
+  curl -s 'http://localhost:9090/api/v1/query?query=sum(scrape_samples_scraped)' 2>/dev/null | jq '.data.result[0].value[1]'
+
+  # Metrics ingestion rate (samples/sec)
+  curl -s 'http://localhost:9090/api/v1/query?query=sum(rate(prometheus_tsdb_head_samples_appended_total[5m]))' 2>/dev/null | jq '.data.result[0].value[1]'
+  # Alternative for VictoriaMetrics
+  curl -s 'http://localhost:9090/api/v1/query?query=sum(rate(vm_rows_inserted_total[5m]))' 2>/dev/null | jq '.data.result[0].value[1]'
+
+  # Total series cardinality
+  curl -s 'http://localhost:9090/api/v1/query?query=prometheus_tsdb_head_series' 2>/dev/null | jq '.data.result[0].value[1]'
+
+  # Scrape targets count
+  curl -s 'http://localhost:9090/api/v1/query?query=count(up)' 2>/dev/null | jq '.data.result[0].value[1]'
+
+  kill $PF_PID 2>/dev/null
+fi
+```
+
+**Logs scale:**
+```bash
+# Log ingestion rate — check Vector, Fluentd, or Loki metrics
+# Try to query Vector's internal metrics endpoint for bytes/events processed
+VECTOR_SVC=$(kubectl get svc -A -o json 2>/dev/null | jq -r '.items[] | select(.metadata.name | test("vector")) | select(.spec.ports[]?.name == "prom-exporter" or .spec.ports[]?.port == 9090) | "\(.metadata.namespace)/\(.metadata.name):\(.spec.ports[0].port)"' | head -1)
+if [ -n "$VECTOR_SVC" ]; then
+  NS=$(echo $VECTOR_SVC | cut -d/ -f1)
+  SVC_PORT=$(echo $VECTOR_SVC | cut -d/ -f2)
+  kubectl port-forward -n $NS svc/${SVC_PORT%:*} 9091:${SVC_PORT#*:} &
+  PF_PID=$!
+  sleep 3
+  # Vector exposes component_sent_bytes_total and component_sent_events_total
+  curl -s http://localhost:9091/metrics 2>/dev/null | grep -i "component_sent_bytes_total\|component_sent_events_total" | head -10
+  kill $PF_PID 2>/dev/null
+fi
+
+# Estimate from pod resource requests (fallback if metrics unavailable)
+# Log receiver pods often have resource requests proportional to throughput
+jq -r '.items[] | select(.metadata.name | test("log-receiver|vector|fluentd|fluent-bit|logstash|loki-write")) | "\(.metadata.namespace)/\(.metadata.name) cpu:\(.spec.containers[0].resources.requests.cpu // "unknown") mem:\(.spec.containers[0].resources.requests.memory // "unknown")"' /tmp/discovery-pods.json | head -10
+
+# ClickHouse / Elasticsearch storage for logs (if accessible)
+kubectl get pvc -A -o json 2>/dev/null | jq -r '.items[] | select(.metadata.name | test("log|loki|elastic|opensearch|clickhouse")) | "\(.metadata.namespace)/\(.metadata.name): \(.spec.resources.requests.storage)"' | head -10
+```
+
+**Traces scale:**
+```bash
+# Trace ingestion — check OTel collector or Jaeger/Tempo metrics
+jq -r '.items[] | select(.metadata.name | test("otel|opentelemetry|jaeger|tempo|receiver-trace")) | "\(.metadata.namespace)/\(.metadata.name) cpu:\(.spec.containers[0].resources.requests.cpu // "unknown") mem:\(.spec.containers[0].resources.requests.memory // "unknown")"' /tmp/discovery-pods.json | head -10
+```
+
+**Observability storage footprint:**
+```bash
+# Total storage allocated to observability components
+kubectl get pvc -A -o json 2>/dev/null | jq '[.items[] | select(.metadata.name | test("prometheus|thanos|mimir|loki|tempo|elastic|opensearch|clickhouse|vector|grafana|victoria")) | .spec.resources.requests.storage | rtrimstr("Gi") | tonumber] | {total_obs_storage_gi: add, count: length}'
+
+# S3 buckets related to observability (if AWS access available)
+aws s3api list-buckets --query 'Buckets[].Name' -o json 2>/dev/null | jq '[.[] | select(test("metric|log|trace|thanos|loki|tempo|observ"))]'
+```
+
+#### 5.3 Application Scale
+
+```bash
+# Total request rate across services (if metrics endpoint available)
+# Set up a fresh port-forward if needed
+METRICS_SVC=$(kubectl get svc -A -o json 2>/dev/null | jq -r '.items[] | select(.metadata.name | test("prometheus|vmagent|vmselect|thanos-query|mimir-query")) | "\(.metadata.namespace)/\(.metadata.name):\(.spec.ports[0].port)"' | head -1)
+if [ -n "$METRICS_SVC" ]; then
+  NS=$(echo $METRICS_SVC | cut -d/ -f1)
+  SVC_PORT=$(echo $METRICS_SVC | cut -d/ -f2)
+  kubectl port-forward -n $NS svc/${SVC_PORT%:*} 9090:${SVC_PORT#*:} &
+  PF_PID=$!
+  sleep 3
+  curl -s 'http://localhost:9090/api/v1/query?query=sum(rate(http_requests_total[5m]))' 2>/dev/null | jq '.data.result[0].value[1]'
+  kill $PF_PID 2>/dev/null
+fi
+
+# Helm releases count (proxy for service count)
+helm list -A --no-headers 2>/dev/null | wc -l
+
+# Deployments count
+kubectl get deployments -A --no-headers 2>/dev/null | wc -l
+```
+
+#### 5.4 If scale data is not discoverable programmatically
+
+Ask the user:
+```
+I need a few numbers to complete the scale picture. Even rough approximations are helpful:
+
+1. **Metrics volume** — Approximate samples/sec or active time series count?
+2. **Log volume** — Approximate GB/day of logs ingested?
+3. **Trace volume** — Approximate spans/sec or GB/day?
+4. **Request rate** — Approximate requests/sec across all services?
+5. **Data retention** — How long do you retain metrics / logs / traces?
 ```
 
 ### Phase 6: Cost Discovery
@@ -376,11 +474,14 @@ Based on what I've found, I have a few questions about operational pain points:
 
 ### Phase 8: Generate HTML Report
 
-After collecting all data, generate a comprehensive HTML report. The report must be:
+After collecting all data, generate a focused executive-level HTML report. The report must be:
 - Self-contained (single HTML file, inline CSS, no external dependencies)
 - Professional and visually clean
+- **Concise** — a bird's-eye view, not an operational runbook. Scannable in under 2 minutes.
 - Tailored to what was actually discovered (omit sections with no data)
 - Opened automatically in the user's browser
+
+**Do NOT include:** per-pod tables, per-node resource breakdowns, ASCII architecture diagrams, service replica counts, individual PV listings, or any detail that belongs in an operational dashboard rather than an executive summary.
 
 Use this command to open the report:
 ```bash
@@ -401,6 +502,16 @@ echo "Report saved to: $(pwd)/discovery-report.html"
 ```
 
 ## HTML Report Structure
+
+The report is designed for a **buyer or tech champion** who needs a bird's-eye view of their environment. It should be scannable in under 2 minutes.
+
+**Report philosophy:**
+- Lead with aggregate numbers and environment-level comparisons
+- Show scale in human-readable terms (e.g., "~50K samples/sec", "~200 GB/day logs")
+- Approximate numbers are more useful than no numbers
+- Omit per-pod, per-node, per-service breakdowns — those belong in operational dashboards, not a discovery report
+- Focus on: environments, tech stack summary, observability scale, costs, and pain points
+- Each section should fit on one screen without scrolling
 
 Generate the report using the template structure below. Adapt sections based on what was discovered — omit empty sections, expand sections with rich data.
 
@@ -438,10 +549,10 @@ Generate the report using the template structure below. Adapt sections based on 
   }
   .header h1 { font-size: 2rem; margin-bottom: 0.5rem; }
   .header p { color: #94a3b8; font-size: 1.1rem; }
-  .container { max-width: 1200px; margin: 0 auto; padding: 2rem; }
+  .container { max-width: 1100px; margin: 0 auto; padding: 2rem; }
   .summary-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
     gap: 1rem;
     margin: 2rem 0;
   }
@@ -449,46 +560,41 @@ Generate the report using the template structure below. Adapt sections based on 
     background: var(--card);
     border: 1px solid var(--border);
     border-radius: 12px;
-    padding: 1.5rem;
+    padding: 1.25rem;
     text-align: center;
   }
   .summary-card .value {
-    font-size: 2rem;
+    font-size: 1.75rem;
     font-weight: 700;
     color: var(--accent);
   }
   .summary-card .label {
     color: var(--text-muted);
-    font-size: 0.875rem;
+    font-size: 0.8rem;
     margin-top: 0.25rem;
   }
   .section {
     background: var(--card);
     border: 1px solid var(--border);
     border-radius: 12px;
-    padding: 2rem;
-    margin: 1.5rem 0;
+    padding: 1.75rem;
+    margin: 1.25rem 0;
   }
   .section h2 {
-    font-size: 1.4rem;
-    margin-bottom: 1rem;
+    font-size: 1.3rem;
+    margin-bottom: 0.75rem;
     color: var(--primary);
     border-bottom: 2px solid var(--accent);
     padding-bottom: 0.5rem;
   }
-  .section h3 {
-    font-size: 1.1rem;
-    margin: 1.5rem 0 0.75rem;
-    color: var(--text);
-  }
   table {
     width: 100%;
     border-collapse: collapse;
-    margin: 1rem 0;
+    margin: 0.75rem 0;
     font-size: 0.9rem;
   }
   th, td {
-    padding: 0.75rem 1rem;
+    padding: 0.6rem 0.75rem;
     text-align: left;
     border-bottom: 1px solid var(--border);
   }
@@ -502,9 +608,9 @@ Generate the report using the template structure below. Adapt sections based on 
   }
   .tag {
     display: inline-block;
-    padding: 0.25rem 0.75rem;
+    padding: 0.2rem 0.6rem;
     border-radius: 9999px;
-    font-size: 0.8rem;
+    font-size: 0.75rem;
     font-weight: 500;
     margin: 0.125rem;
   }
@@ -516,15 +622,15 @@ Generate the report using the template structure below. Adapt sections based on 
   .tag-gray { background: #f1f5f9; color: #475569; }
   .pain-point {
     border-left: 4px solid var(--warning);
-    padding: 1rem 1.5rem;
-    margin: 0.75rem 0;
+    padding: 0.75rem 1.25rem;
+    margin: 0.5rem 0;
     background: #fffbeb;
     border-radius: 0 8px 8px 0;
   }
   .recommendation {
     border-left: 4px solid var(--success);
-    padding: 1rem 1.5rem;
-    margin: 0.75rem 0;
+    padding: 0.75rem 1.25rem;
+    margin: 0.5rem 0;
     background: #ecfdf5;
     border-radius: 0 8px 8px 0;
   }
@@ -557,7 +663,7 @@ Generate the report using the template structure below. Adapt sections based on 
 </div>
 <div class="container">
 
-  <!-- Executive Summary Cards -->
+  <!-- Executive Summary — the most important section. Key numbers at a glance. -->
   <div class="summary-grid">
     <div class="summary-card">
       <div class="value">{{N}}</div>
@@ -568,72 +674,150 @@ Generate the report using the template structure below. Adapt sections based on 
       <div class="label">Services</div>
     </div>
     <div class="summary-card">
-      <div class="value">{{N}}</div>
-      <div class="label">K8s Nodes</div>
+      <div class="value">{{N}} nodes</div>
+      <div class="label">Compute (total)</div>
     </div>
     <div class="summary-card">
-      <div class="value">{{TOOL}}</div>
-      <div class="label">Primary Monitoring</div>
+      <div class="value">~{{N}}/sec</div>
+      <div class="label">Metrics Ingestion</div>
+    </div>
+    <div class="summary-card">
+      <div class="value">~{{N}} GB/day</div>
+      <div class="label">Log Volume</div>
+    </div>
+    <div class="summary-card">
+      <div class="value">~{{N}}/sec</div>
+      <div class="label">Trace Spans</div>
+    </div>
+    <div class="summary-card">
+      <div class="value">${{N}}/mo</div>
+      <div class="label">Est. Cloud Spend</div>
+    </div>
+    <div class="summary-card">
+      <div class="value">{{N}}</div>
+      <div class="label">Team Size</div>
     </div>
   </div>
 
-  <!-- Section: Environments -->
+  <!-- Section: Environments — one row per environment, keep it compact -->
   <div class="section">
     <h2>Environments</h2>
-    <!-- Table of environments with cloud provider, region, cluster info -->
+    <table>
+      <thead>
+        <tr><th>Environment</th><th>Cloud / Region</th><th>Cluster</th><th>Nodes</th><th>Services</th></tr>
+      </thead>
+      <tbody>
+        <!-- One row per environment. Show aggregate node/service count per env. -->
+        <tr>
+          <td><span class="env-badge env-prod">PROD</span></td>
+          <td>{{cloud}} {{region}}</td>
+          <td>{{cluster_name}}</td>
+          <td>{{N}}</td>
+          <td>{{N}}</td>
+        </tr>
+        <!-- Repeat for each environment -->
+      </tbody>
+    </table>
   </div>
 
-  <!-- Section: Tech Stack -->
+  <!-- Section: Tech Stack — tags only, no per-service tables -->
   <div class="section">
     <h2>Tech Stack</h2>
-    <h3>Languages & Frameworks</h3>
-    <!-- Tags for each language/framework -->
-    <h3>Databases & Storage</h3>
-    <!-- Table of databases -->
-    <h3>Message Queues & Event Streaming</h3>
-    <!-- Table of queues -->
+    <p><strong>Languages:</strong>
+      <span class="tag tag-blue">{{lang}}</span>
+      <!-- tags for each language -->
+    </p>
+    <p style="margin-top: 0.5rem;"><strong>Databases:</strong>
+      <span class="tag tag-green">{{db}}</span>
+      <!-- tags for each database -->
+    </p>
+    <p style="margin-top: 0.5rem;"><strong>Infra & IaC:</strong>
+      <span class="tag tag-purple">{{tool}}</span>
+      <!-- tags for IaC, CI/CD, orchestration -->
+    </p>
   </div>
 
-  <!-- Section: Infrastructure -->
-  <div class="section">
-    <h2>Infrastructure</h2>
-    <h3>Compute</h3>
-    <!-- Node types, counts, capacity -->
-    <h3>Networking</h3>
-    <!-- Load balancers, ingress -->
-    <h3>Storage</h3>
-    <!-- PVs, S3 buckets, etc -->
-  </div>
-
-  <!-- Section: Observability Stack -->
+  <!-- Section: Observability Stack — what tools, NOT per-pod details -->
   <div class="section">
     <h2>Observability Stack</h2>
-    <h3>Metrics & Monitoring</h3>
-    <!-- Tools, configuration -->
-    <h3>Logging</h3>
-    <!-- Log pipeline -->
-    <h3>Tracing</h3>
-    <!-- Tracing tools -->
-    <h3>Alerting & On-Call</h3>
-    <!-- Alert routing -->
+    <table>
+      <thead>
+        <tr><th>Signal</th><th>Tools</th><th>Scale</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Metrics</strong></td>
+          <td>{{tools as tags or comma-separated}}</td>
+          <td>~{{N}} samples/sec, {{N}} active series</td>
+        </tr>
+        <tr>
+          <td><strong>Logs</strong></td>
+          <td>{{tools}}</td>
+          <td>~{{N}} GB/day</td>
+        </tr>
+        <tr>
+          <td><strong>Traces</strong></td>
+          <td>{{tools}}</td>
+          <td>~{{N}} spans/sec</td>
+        </tr>
+        <tr>
+          <td><strong>Alerting</strong></td>
+          <td>{{tools}}</td>
+          <td>{{N}} alert rules</td>
+        </tr>
+      </tbody>
+    </table>
+    <p style="margin-top: 0.75rem; font-size: 0.85rem; color: var(--text-muted);">
+      Observability storage: ~{{N}} GB total across all signals. Retention: {{metrics_retention}} / {{logs_retention}} / {{traces_retention}}.
+    </p>
   </div>
 
-  <!-- Section: Scale -->
+  <!-- Section: Scale at a Glance — environment comparison, NOT per-node -->
   <div class="section">
-    <h2>Scale</h2>
-    <!-- Request rates, data volumes, pod counts -->
+    <h2>Scale at a Glance</h2>
+    <table>
+      <thead>
+        <tr><th>Metric</th><th>Dev</th><th>Staging</th><th>Prod</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Nodes</td><td>{{N}}</td><td>{{N}}</td><td>{{N}}</td></tr>
+        <tr><td>Total vCPU</td><td>{{N}}</td><td>{{N}}</td><td>{{N}}</td></tr>
+        <tr><td>Total Memory</td><td>{{N}} GB</td><td>{{N}} GB</td><td>{{N}} GB</td></tr>
+        <tr><td>Pods / Services</td><td>{{N}}</td><td>{{N}}</td><td>{{N}}</td></tr>
+        <tr><td>Avg CPU Util</td><td>{{N}}%</td><td>{{N}}%</td><td>{{N}}%</td></tr>
+        <tr><td>Persistent Storage</td><td>{{N}} GB</td><td>{{N}} GB</td><td>{{N}} GB</td></tr>
+      </tbody>
+    </table>
   </div>
 
-  <!-- Section: Costs -->
+  <!-- Section: Costs — keep it to a summary table -->
   <div class="section">
-    <h2>Costs</h2>
-    <!-- Monthly costs breakdown -->
+    <h2>Costs (estimated monthly)</h2>
+    <table>
+      <thead>
+        <tr><th>Category</th><th>Estimated Spend</th><th>Notes</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Compute (EKS/EC2)</td><td>${{N}}</td><td>{{instance types, regions}}</td></tr>
+        <tr><td>Storage (S3/EBS/PV)</td><td>${{N}}</td><td></td></tr>
+        <tr><td>Observability Tools</td><td>${{N}}</td><td>{{vendor names}}</td></tr>
+        <tr><td>Managed Databases</td><td>${{N}}</td><td>{{db names}}</td></tr>
+        <tr><td><strong>Total</strong></td><td><strong>${{N}}</strong></td><td></td></tr>
+      </tbody>
+    </table>
   </div>
 
-  <!-- Section: Pain Points & Recommendations -->
+  <!-- Section: Pain Points — brief, actionable -->
   <div class="section">
-    <h2>Pain Points & Recommendations</h2>
-    <!-- Pain points with recommendation callouts -->
+    <h2>Key Pain Points</h2>
+    <div class="pain-point">
+      <strong>{{Pain point title}}</strong>
+      <p>{{1-2 sentence description with supporting data}}</p>
+    </div>
+    <div class="recommendation">
+      <strong>Recommendation:</strong> {{1-2 sentence actionable suggestion}}
+    </div>
+    <!-- Repeat for each pain point. Limit to top 3-5 most impactful. -->
   </div>
 
 </div>
@@ -646,14 +830,18 @@ Generate the report using the template structure below. Adapt sections based on 
 
 ## Report Generation Rules
 
-1. **Replace all `{{PLACEHOLDER}}` values** with actual discovered data.
-2. **Omit sections** where no data was found and the user did not provide information.
-3. **Use tags** (`.tag-blue`, `.tag-green`, etc.) for languages, frameworks, and tools.
-4. **Use environment badges** (`.env-prod`, `.env-staging`, `.env-dev`) when listing per-environment data.
-5. **Use pain-point callouts** for issues discovered or reported by the user.
-6. **Use recommendation callouts** for actionable suggestions based on findings.
-7. **Include actual numbers** — node counts, pod counts, request rates, costs — not placeholders.
-8. **Save the file** to a discoverable location and open it in the browser.
+1. **Executive-first.** The report is for a buyer or tech champion who needs a bird's-eye view. Lead with the numbers that matter: environments, scale, costs, pain points. Do NOT include per-pod, per-node, or per-service breakdowns.
+2. **Replace all `{{PLACEHOLDER}}` values** with actual discovered data. Use approximations (prefixed with ~) when exact numbers are unavailable.
+3. **Omit sections** where no data was found and the user did not provide information.
+4. **Keep it scannable.** Each section should fit on one screen. Use tables with 3-6 rows, not 20+. Use tags for tech stack, not detailed tables.
+5. **Observability scale is mandatory.** The Observability Stack section MUST include scale numbers (samples/sec, GB/day, spans/sec) alongside tool names. If exact numbers are unavailable, estimate from resource allocations or ask the user.
+6. **Environment comparison.** The Scale section should compare environments side-by-side (dev vs staging vs prod) in a single table, not describe each in isolation.
+7. **Use tags** (`.tag-blue`, `.tag-green`, etc.) for languages, frameworks, and tools — not detailed tables listing every component.
+8. **Use environment badges** (`.env-prod`, `.env-staging`, `.env-dev`) in the environments table.
+9. **Pain points: top 3-5 only.** Each pain point gets 1-2 sentences max, followed by a 1-2 sentence recommendation. Do not write paragraphs.
+10. **No architecture diagrams.** ASCII diagrams add clutter. The tool names and scale numbers tell the story.
+11. **Include actual numbers** — node counts, ingestion rates, costs — not placeholders. Approximations are fine and encouraged.
+12. **Save the file** to a discoverable location and open it in the browser.
 
 ## Rate Limiting & Safety
 
