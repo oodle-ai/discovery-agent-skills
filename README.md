@@ -12,7 +12,7 @@ The discovery agent systematically examines your environment to produce a tailor
 - **Observability Stack** — Monitoring, logging, tracing, alerting tools
 - **Scale** — Request rates, data volumes, node/pod counts
 - **Costs** — Cloud spend, observability tool costs
-- **Pain Points** — Alert fatigue, coverage gaps, toil, reliability issues
+- **Pain Points** — Observability-specific: alert fatigue, coverage gaps, tool sprawl, cost concerns
 
 The agent presents a plan before proceeding, asks clarifying questions when it can't find information programmatically, and never performs destructive operations.
 

@@ -41,7 +41,7 @@ I'll discover your infrastructure and observability setup. Here's my plan:
 4. **Observability Stack Discovery** — Monitoring, logging, tracing, alerting tools
 5. **Scale Assessment** — Infra scale per environment + observability scale (metrics ingestion rate, log volume, trace throughput, active time series)
 6. **Cost Discovery** — Cloud spend, observability tool costs, license costs
-7. **Pain Points** — Alert fatigue, gaps in coverage, toil, reliability issues
+7. **Pain Points** — Observability-specific: alert fatigue, gaps in coverage, tool sprawl, cost, correlation issues
 
 I will only perform read-only operations. No changes will be made to your systems.
 The output will be a focused executive summary — bird's-eye view of your setup, not operational-level detail.
@@ -459,17 +459,18 @@ I couldn't access cost data programmatically. Could you share approximate monthl
 
 ### Phase 7: Pain Points Discovery
 
-Ask the user targeted questions based on what was discovered:
+Ask the user targeted questions about **observability-specific** pain points only. Do NOT ask about general infrastructure, deployment, or application-level pain points.
 
 ```
-Based on what I've found, I have a few questions about operational pain points:
+Based on what I've found, I have a few questions about observability pain points:
 
 1. **Alert fatigue** — How many alerts do you receive per day/week? Are most actionable?
-2. **Observability gaps** — Are there services or systems with insufficient monitoring?
-3. **Troubleshooting time** — How long does it typically take to identify root cause of incidents?
-4. **Cost concerns** — Are observability costs growing faster than your infrastructure?
-5. **Tool sprawl** — Do you find yourself switching between too many tools during incidents?
-6. **Data retention** — Are you satisfied with how long you retain metrics/logs/traces?
+2. **Observability gaps** — Are there services or systems with insufficient monitoring, logging, or tracing?
+3. **Troubleshooting time** — How long does it typically take to identify root cause of incidents? Do you have the right signals?
+4. **Observability cost** — Are observability costs growing faster than your infrastructure? Any vendor lock-in concerns?
+5. **Tool sprawl** — Do you find yourself switching between too many observability tools during incidents?
+6. **Data retention** — Are you satisfied with how long you retain metrics/logs/traces? Any compliance requirements unmet?
+7. **Correlation gaps** — Can you easily correlate metrics, logs, and traces for a single request?
 ```
 
 ### Phase 8: Generate HTML Report
@@ -807,9 +808,9 @@ Generate the report using the template structure below. Adapt sections based on 
     </table>
   </div>
 
-  <!-- Section: Pain Points — brief, actionable -->
+  <!-- Section: Observability Pain Points — brief, actionable, observability-only -->
   <div class="section">
-    <h2>Key Pain Points</h2>
+    <h2>Observability Pain Points</h2>
     <div class="pain-point">
       <strong>{{Pain point title}}</strong>
       <p>{{1-2 sentence description with supporting data}}</p>
@@ -817,7 +818,7 @@ Generate the report using the template structure below. Adapt sections based on 
     <div class="recommendation">
       <strong>Recommendation:</strong> {{1-2 sentence actionable suggestion}}
     </div>
-    <!-- Repeat for each pain point. Limit to top 3-5 most impactful. -->
+    <!-- Repeat for each pain point. Limit to top 3-5 most impactful. Only include observability-related pain points (alerting, monitoring gaps, cost, tool sprawl, correlation, retention). -->
   </div>
 
 </div>
@@ -838,7 +839,7 @@ Generate the report using the template structure below. Adapt sections based on 
 6. **Environment comparison.** The Scale section should compare environments side-by-side (dev vs staging vs prod) in a single table, not describe each in isolation.
 7. **Use tags** (`.tag-blue`, `.tag-green`, etc.) for languages, frameworks, and tools — not detailed tables listing every component.
 8. **Use environment badges** (`.env-prod`, `.env-staging`, `.env-dev`) in the environments table.
-9. **Pain points: top 3-5 only.** Each pain point gets 1-2 sentences max, followed by a 1-2 sentence recommendation. Do not write paragraphs.
+9. **Pain points: top 3-5 only, observability-focused.** Only include pain points related to observability (alerting, monitoring gaps, log/trace coverage, cost, tool sprawl, correlation, retention). Do NOT include general infrastructure, deployment, or application-level pain points. Each pain point gets 1-2 sentences max, followed by a 1-2 sentence recommendation.
 10. **No architecture diagrams.** ASCII diagrams add clutter. The tool names and scale numbers tell the story.
 11. **Include actual numbers** — node counts, ingestion rates, costs — not placeholders. Approximations are fine and encouraged.
 12. **Save the file** to a discoverable location and open it in the browser.
