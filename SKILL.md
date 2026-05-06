@@ -324,13 +324,62 @@ kubectl get nodes -o json 2>/dev/null | jq '{
 kubectl top nodes --no-headers 2>/dev/null | awk '{cpu+=$3; mem+=$5; n++} END {printf "Avg CPU: %d%%, Avg Memory: %d%%\n", cpu/n, mem/n}'
 ```
 
-#### 5.2 Observability Scale
+#### 5.2 Observability Volume Estimation
 
-This is critical — measure the volume of telemetry data flowing through the observability stack.
+This is the most critical section. The goal is to produce concrete volume numbers:
+- **Active time series** (total unique metric series)
+- **Metrics ingestion rate** (samples/sec)
+- **Log volume** (GB/day)
+- **Trace volume** (GB/day or spans/sec)
 
-**Metrics scale:**
+**Strategy:** Users typically have MCP servers or CLI tools connected to their observability stack (e.g., Datadog CLI, Grafana Cloud CLI, New Relic CLI, or custom MCP integrations). Use these as the **primary** method to query volume data. Query patterns over the **last 7 days** to get a representative average — not just a point-in-time snapshot.
+
+**Step 1: Identify available observability query tools**
+
+Check what MCP servers, CLIs, or APIs the user has available:
+```
+I need to query your observability stack for volume numbers. Do you have any of the following available?
+
+- MCP server connected to your metrics/logs/traces backend (e.g., Datadog MCP, Grafana MCP, custom MCP)
+- CLI tools (e.g., `datadog`, `grafana-cli`, `newrelic`, `logcli`, `promtool`)
+- Direct API access to your observability backend (Prometheus, Grafana Cloud, Datadog, etc.)
+
+Which tools or integrations can I use to query telemetry volume?
+```
+
+**Step 2: Query volume over last 7 days via MCP/CLI (preferred)**
+
+Use whatever tool the user has available. The key queries to run:
+
+```
+# These are example queries — adapt to the user's specific tool/API:
+
+# Active time series (7-day average)
+# Prometheus/Thanos/Mimir: avg_over_time(prometheus_tsdb_head_series[7d])
+# Datadog: metrics.list with count
+# Grafana Cloud: /api/v1/query?query=sum(scrape_samples_scraped)
+
+# Metrics ingestion rate (7-day average samples/sec)
+# Prometheus: avg_over_time(rate(prometheus_tsdb_head_samples_appended_total[1h])[7d:1h])
+# VictoriaMetrics: avg_over_time(rate(vm_rows_inserted_total[1h])[7d:1h])
+
+# Log volume (average GB/day over last 7 days)
+# Loki: sum(bytes_over_time({job=~".+"}[7d])) / 7 / 1e9
+# Elasticsearch: _cat/indices?v&s=store.size:desc (sum store.size, divide by retention days)
+# Datadog: logs estimated usage API
+# CloudWatch: GetMetricData for IncomingBytes
+
+# Trace volume (average GB/day or spans/sec over last 7 days)
+# Tempo: tempo_ingester_bytes_received_total rate over 7d
+# Jaeger: jaeger_collector_spans_received_total rate over 7d
+# Datadog: trace estimated usage API
+```
+
+**Step 3: Fallback — query via port-forward to in-cluster metrics**
+
+If no MCP/CLI is available, fall back to direct Prometheus-compatible queries:
+
 ```bash
-# Set up port-forward for Prometheus/VictoriaMetrics/Thanos queries
 # Detect which metrics endpoint is available
 METRICS_SVC=$(kubectl get svc -A -o json 2>/dev/null | jq -r '.items[] | select(.metadata.name | test("prometheus|vmagent|vmselect|thanos-query|mimir-query")) | "\(.metadata.namespace)/\(.metadata.name):\(.spec.ports[0].port)"' | head -1)
 if [ -n "$METRICS_SVC" ]; then
@@ -340,62 +389,47 @@ if [ -n "$METRICS_SVC" ]; then
   PF_PID=$!
   sleep 3
 
-  # Active time series count
-  curl -s 'http://localhost:9090/api/v1/query?query=sum(scrape_samples_scraped)' 2>/dev/null | jq '.data.result[0].value[1]'
-
-  # Metrics ingestion rate (samples/sec)
-  curl -s 'http://localhost:9090/api/v1/query?query=sum(rate(prometheus_tsdb_head_samples_appended_total[5m]))' 2>/dev/null | jq '.data.result[0].value[1]'
-  # Alternative for VictoriaMetrics
-  curl -s 'http://localhost:9090/api/v1/query?query=sum(rate(vm_rows_inserted_total[5m]))' 2>/dev/null | jq '.data.result[0].value[1]'
-
-  # Total series cardinality
+  # Active time series (current)
   curl -s 'http://localhost:9090/api/v1/query?query=prometheus_tsdb_head_series' 2>/dev/null | jq '.data.result[0].value[1]'
+
+  # Metrics ingestion rate — 7-day average (samples/sec)
+  curl -s 'http://localhost:9090/api/v1/query?query=avg_over_time(rate(prometheus_tsdb_head_samples_appended_total[1h])[7d:1h])' 2>/dev/null | jq '.data.result[0].value[1]'
+  # Alternative for VictoriaMetrics
+  curl -s 'http://localhost:9090/api/v1/query?query=avg_over_time(rate(vm_rows_inserted_total[1h])[7d:1h])' 2>/dev/null | jq '.data.result[0].value[1]'
 
   # Scrape targets count
   curl -s 'http://localhost:9090/api/v1/query?query=count(up)' 2>/dev/null | jq '.data.result[0].value[1]'
 
+  # Log volume if Loki metrics are exposed via Prometheus
+  curl -s 'http://localhost:9090/api/v1/query?query=sum(rate(loki_distributor_bytes_received_total[1h]))*86400/1e9' 2>/dev/null | jq '.data.result[0].value[1]'
+
+  # Trace ingestion rate if Tempo/OTel metrics are exposed
+  curl -s 'http://localhost:9090/api/v1/query?query=sum(rate(tempo_distributor_bytes_received_total[1h]))*86400/1e9' 2>/dev/null | jq '.data.result[0].value[1]'
+  curl -s 'http://localhost:9090/api/v1/query?query=sum(rate(otelcol_receiver_accepted_spans_total[1h]))' 2>/dev/null | jq '.data.result[0].value[1]'
+
   kill $PF_PID 2>/dev/null
 fi
 ```
 
-**Logs scale:**
-```bash
-# Log ingestion rate — check Vector, Fluentd, or Loki metrics
-# Try to query Vector's internal metrics endpoint for bytes/events processed
-VECTOR_SVC=$(kubectl get svc -A -o json 2>/dev/null | jq -r '.items[] | select(.metadata.name | test("vector")) | select(.spec.ports[]?.name == "prom-exporter" or .spec.ports[]?.port == 9090) | "\(.metadata.namespace)/\(.metadata.name):\(.spec.ports[0].port)"' | head -1)
-if [ -n "$VECTOR_SVC" ]; then
-  NS=$(echo $VECTOR_SVC | cut -d/ -f1)
-  SVC_PORT=$(echo $VECTOR_SVC | cut -d/ -f2)
-  kubectl port-forward -n $NS svc/${SVC_PORT%:*} 9091:${SVC_PORT#*:} &
-  PF_PID=$!
-  sleep 3
-  # Vector exposes component_sent_bytes_total and component_sent_events_total
-  curl -s http://localhost:9091/metrics 2>/dev/null | grep -i "component_sent_bytes_total\|component_sent_events_total" | head -10
-  kill $PF_PID 2>/dev/null
-fi
+**Step 4: Estimate from resource allocations (last resort)**
 
-# Estimate from pod resource requests (fallback if metrics unavailable)
-# Log receiver pods often have resource requests proportional to throughput
+If neither MCP/CLI nor direct queries are available, estimate from infrastructure:
+
+```bash
+# Log pipeline pods — resource requests are a rough proxy for throughput
 jq -r '.items[] | select(.metadata.name | test("log-receiver|vector|fluentd|fluent-bit|logstash|loki-write")) | "\(.metadata.namespace)/\(.metadata.name) cpu:\(.spec.containers[0].resources.requests.cpu // "unknown") mem:\(.spec.containers[0].resources.requests.memory // "unknown")"' /tmp/discovery-pods.json | head -10
 
-# ClickHouse / Elasticsearch storage for logs (if accessible)
-kubectl get pvc -A -o json 2>/dev/null | jq -r '.items[] | select(.metadata.name | test("log|loki|elastic|opensearch|clickhouse")) | "\(.metadata.namespace)/\(.metadata.name): \(.spec.resources.requests.storage)"' | head -10
-```
+# Trace collector pods
+jq -r '.items[] | select(.metadata.name | test("otel|opentelemetry|jaeger|tempo")) | "\(.metadata.namespace)/\(.metadata.name) cpu:\(.spec.containers[0].resources.requests.cpu // "unknown") mem:\(.spec.containers[0].resources.requests.memory // "unknown")"' /tmp/discovery-pods.json | head -10
 
-**Traces scale:**
-```bash
-# Trace ingestion — check OTel collector or Jaeger/Tempo metrics
-jq -r '.items[] | select(.metadata.name | test("otel|opentelemetry|jaeger|tempo|receiver-trace")) | "\(.metadata.namespace)/\(.metadata.name) cpu:\(.spec.containers[0].resources.requests.cpu // "unknown") mem:\(.spec.containers[0].resources.requests.memory // "unknown")"' /tmp/discovery-pods.json | head -10
-```
-
-**Observability storage footprint:**
-```bash
-# Total storage allocated to observability components
+# Observability storage (PVCs)
 kubectl get pvc -A -o json 2>/dev/null | jq '[.items[] | select(.metadata.name | test("prometheus|thanos|mimir|loki|tempo|elastic|opensearch|clickhouse|vector|grafana|victoria")) | .spec.resources.requests.storage | rtrimstr("Gi") | tonumber] | {total_obs_storage_gi: add, count: length}'
 
 # S3 buckets related to observability (if AWS access available)
 aws s3api list-buckets --query 'Buckets[].Name' -o json 2>/dev/null | jq '[.[] | select(test("metric|log|trace|thanos|loki|tempo|observ"))]'
 ```
+
+**Important:** Always report the numbers you find, even if approximate. Use `~` prefix for estimates (e.g., "~50K samples/sec", "~150 GB/day logs"). Approximate numbers are far more useful than no numbers.
 
 #### 5.3 Application Scale
 
@@ -424,13 +458,14 @@ kubectl get deployments -A --no-headers 2>/dev/null | wc -l
 
 Ask the user:
 ```
-I need a few numbers to complete the scale picture. Even rough approximations are helpful:
+I need a few numbers to complete the scale picture. Even rough approximations based on your last 7 days are helpful:
 
-1. **Metrics volume** — Approximate samples/sec or active time series count?
-2. **Log volume** — Approximate GB/day of logs ingested?
-3. **Trace volume** — Approximate spans/sec or GB/day?
-4. **Request rate** — Approximate requests/sec across all services?
-5. **Data retention** — How long do you retain metrics / logs / traces?
+1. **Active time series** — How many unique metric series does your system track?
+2. **Metrics ingestion** — Approximate samples/sec ingested?
+3. **Log volume** — Approximate GB/day of logs ingested (average over last week)?
+4. **Trace volume** — Approximate GB/day or spans/sec (average over last week)?
+5. **Request rate** — Approximate requests/sec across all services?
+6. **Data retention** — How long do you retain metrics / logs / traces?
 ```
 
 ### Phase 6: Cost Discovery
