@@ -54,13 +54,13 @@ oodle version
 
 ### Authentication
 
-The `oodle` CLI needs to be configured with API credentials. Check if it is already configured:
+The `oodle` CLI needs to be configured with API credentials. Check if it is already configured by running an authenticated command:
 
 ```bash
-oodle configure show 2>/dev/null
+oodle integrations list -o json 2>/dev/null
 ```
 
-If not configured, the user needs to set up authentication. There are three options:
+If this fails with an authentication error, the user needs to set up credentials. There are three options:
 
 ```bash
 # Option 1: Interactive configuration
@@ -72,10 +72,9 @@ oodle auth login
 # Option 3: Environment variables
 export OODLE_API_KEY="<api-key>"
 export OODLE_INSTANCE="<instance-id>"
-# Optionally: export OODLE_URL="https://us1.api.oodle.ai"
 ```
 
-**Note:** The `get-setup-spec` command does NOT require authentication, so you can fetch setup instructions even before the CLI is fully configured. However, `integrations list` and the actual integration setup will require valid credentials.
+**Note:** The `get-setup-spec` command does NOT require authentication, so you can fetch setup instructions even before the CLI is fully configured. However, `integrations list` and the actual integration setup will require valid credentials. If the user already knows the integration type and auth is not yet configured, you can skip ahead to Phase 2 to fetch the setup spec, then return to configure auth before Phase 5 (execution).
 
 ## Execution Flow
 
@@ -94,6 +93,8 @@ oodle integrations list -o json
 ```
 
 This returns a JSON array of integration objects with fields like `name`, `type`, `status`, and `categories`.
+
+**Note:** This command requires authentication. If it fails due to missing credentials, either guide the user through auth setup first (see Prerequisites → Authentication), or — if the user already specified an integration type — skip ahead to Phase 2 (`get-setup-spec` does not require auth) and return to configure auth before Phase 5.
 
 **If the user didn't specify an integration type**, present the list and ask them to choose:
 
@@ -153,7 +154,7 @@ For each requirement:
 
 The setup spec defines required and optional parameters. Resolve them in this order:
 
-1. **From the environment** — Check if values are already available (e.g., cluster name from `kubectl config current-context`, instance ID from `oodle configure show`).
+1. **From the environment** — Check if values are already available (e.g., cluster name from `kubectl config current-context`, instance ID from `OODLE_INSTANCE` env var or CLI config).
 2. **From the user's request** — The user may have specified values in their prompt (e.g., "integrate my production cluster").
 3. **Ask the user** — For any remaining required parameters, ask the user. Group questions together rather than asking one at a time.
 
@@ -177,6 +178,8 @@ For each step in the setup method:
 2. **Get confirmation** — Ask the user to confirm before executing (unless it's a read-only check).
 3. **Execute** — Run the command.
 4. **Verify** — Check the output for success. If the step failed, diagnose the issue and suggest a fix.
+
+> **Note:** The steps below are illustrative only. Always follow the actual steps from the setup spec fetched in Phase 2.
 
 Example flow for a Kubernetes integration:
 

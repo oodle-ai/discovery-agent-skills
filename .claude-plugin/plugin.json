@@ -1,11 +1,11 @@
 {
-  "name": "oodle-discovery-skills",
-  "displayName": "Oodle Discovery",
-  "description": "Discover your tech stack, observability stack, infrastructure scale, costs, and pain points. Produces an HTML report.",
+  "name": "oodle-agent-skills",
+  "displayName": "Oodle Agent Skills",
+  "description": "AI agent skills for infrastructure discovery and Oodle platform onboarding. Discover your tech stack, observability stack, infrastructure scale, costs, and pain points, or integrate your infrastructure with Oodle.",
   "version": "1.0.0",
   "author": { "name": "Oodle", "email": "support@oodle.ai" },
   "homepage": "https://github.com/oodle-ai/discovery-agent-skills",
   "repository": "https://github.com/oodle-ai/discovery-agent-skills",
   "license": "MIT",
-  "keywords": ["oodle", "discovery", "observability", "tech-stack", "infrastructure", "assessment", "ai-agent", "skills"]
+  "keywords": ["oodle", "discovery", "onboarding", "integration", "observability", "tech-stack", "infrastructure", "assessment", "ai-agent", "skills"]
 }

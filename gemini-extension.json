@@ -1,7 +1,7 @@
 {
-  "name": "oodle-discovery-skills",
+  "name": "oodle-agent-skills",
   "version": "1.0.0",
-  "description": "Discover your tech stack, observability stack, infrastructure scale, costs, and pain points. Produces an HTML report.",
+  "description": "AI agent skills for infrastructure discovery and Oodle platform onboarding. Discover your tech stack, observability stack, infrastructure scale, costs, and pain points, or integrate your infrastructure with Oodle.",
   "author": "Oodle",
   "homepage": "https://github.com/oodle-ai/discovery-agent-skills"
 }

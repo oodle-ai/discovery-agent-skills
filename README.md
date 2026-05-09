@@ -53,7 +53,11 @@ npx skills add oodle-ai/discovery-agent-skills --agent cursor -y
 
 ```bash
 git clone https://github.com/oodle-ai/discovery-agent-skills.git
-cp -r discovery-agent-skills/skills/* ~/.<agent>/skills/
+
+# Copy skill files to your agent's skills directory
+mkdir -p ~/.<agent>/skills/oodle-discovery ~/.<agent>/skills/oodle-onboarding
+cp discovery-agent-skills/SKILL.md ~/.<agent>/skills/oodle-discovery/SKILL.md
+cp discovery-agent-skills/ONBOARDING.md ~/.<agent>/skills/oodle-onboarding/SKILL.md
 ```
 
 ## Usage
@@ -95,14 +99,14 @@ The agent will guide you through the full setup interactively, confirming each s
 - **Transparent** — Shows you the plan before executing
 - **Confirmation required** — Onboarding asks for confirmation before creating or modifying resources
 - **Discovery is read-only** — Never modifies, creates, or deletes any resources
-- **Rate-limited** — Throttles API calls to avoid overwhelming systems
+- **Rate-limited** — Throttles API calls to avoid overwhelming systems (applies to both discovery and onboarding)
 - **Graceful** — Skips checks it can't perform (missing tools, no credentials) and notes gaps
 
 ## Requirements
 
 The skills work best when run from a machine with access to your infrastructure. Common tools they leverage (all optional — they skip what's unavailable):
 
-- `oodle` CLI — Required for onboarding; install via `brew install oodle` or `go install github.com/oodle-ai/oodle-cli/cmd/oodle@latest`
+- `oodle` CLI — Required for onboarding; install via `brew tap oodle-ai/oodle && brew install oodle` or `go install github.com/oodle-ai/oodle-cli/cmd/oodle@latest`
 - `kubectl` — Kubernetes cluster discovery and integration
 - `helm` — Kubernetes integration setup (if using Helm method)
 - `aws` CLI — AWS resource and cost discovery
