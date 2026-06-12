@@ -111,10 +111,26 @@
   details.deep-dive > .deep-dive-body { padding: 0 1.75rem 1.5rem; }
   .provenance { font-size: 0.8rem; }
   .provenance td { font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-                   font-size: 0.75rem; }
+                   font-size: 0.75rem; vertical-align: top; }
+  .provenance td:nth-child(1), .provenance td:nth-child(2) { white-space: nowrap; }
+  .table-wrap { overflow-x: auto; }
   .muted { color: var(--text-muted); font-size: 0.85rem; }
   code { background: #f1f5f9; padding: 0.1rem 0.3rem; border-radius: 4px;
-         font-size: 0.85em; word-break: break-all; }
+         font-size: 0.85em; overflow-wrap: anywhere; }
+
+  /* pure-CSS tooltips (title attributes are unreliable/invisible) */
+  [data-tip] { position: relative; cursor: help; }
+  [data-tip]:hover::after {
+    content: attr(data-tip);
+    position: absolute; left: 50%; transform: translateX(-50%);
+    bottom: calc(100% + 6px);
+    background: var(--primary); color: #f1f5f9;
+    padding: 0.45rem 0.65rem; border-radius: 6px;
+    font-size: 0.75rem; font-weight: 400; line-height: 1.4;
+    white-space: pre-line; width: max-content; max-width: 340px;
+    text-align: left; z-index: 10; pointer-events: none;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.25);
+  }
 </style>
 </head>
 <body>
@@ -123,21 +139,21 @@
   <p>Generated on 2026-01-01 for Acme Corp (fictional sample)</p>
 </div>
 <div class="container">
-<div class="summary-grid"><div class="summary-card" title="reported by agent/user — not collector-verified"><div class="value">2</div><div class="label">Environments</div></div>
-<div class="summary-card" title="reported by agent/user — not collector-verified"><div class="value">59</div><div class="label">Services</div></div>
-<div class="summary-card" title="datadog: 142 hosts (ok)"><div class="value">142 hosts</div><div class="label">Hosts (monitored)</div></div>
-<div class="summary-card" title="datadog: 1.8K metrics (ok)"><div class="value">1.8K metrics</div><div class="label">Active Metrics</div></div>
-<div class="summary-card" title="datadog: 18.2K metrics (ok)"><div class="value">18.2K metrics</div><div class="label">Custom Metrics</div></div>
-<div class="summary-card" title="datadog: 231.4 GB/day (ok)"><div class="value">231.4 GB/day</div><div class="label">Log Volume</div></div>
-<div class="summary-card" title="no measured figure; see Coverage &amp; Gaps"><div class="value">—</div><div class="label">Trace Volume</div></div>
-<div class="summary-card" title="datadog: $41.2K (ok)"><div class="value">$41.2K</div><div class="label">Est. Observability Spend</div></div>
-<div class="summary-card" title="reported by agent/user — not collector-verified"><div class="value">8 engineers</div><div class="label">Team Size</div></div></div>
+<div class="summary-grid"><div class="summary-card" data-tip="reported by agent/user — not collector-verified"><div class="value">2</div><div class="label">Environments</div></div>
+<div class="summary-card" data-tip="reported by agent/user — not collector-verified"><div class="value">59</div><div class="label">Services</div></div>
+<div class="summary-card" data-tip="datadog: 142 hosts (ok)"><div class="value">142 hosts</div><div class="label">Hosts (monitored)</div></div>
+<div class="summary-card" data-tip="datadog: 1.8K metrics (ok)"><div class="value">1.8K metrics</div><div class="label">Active Metrics</div></div>
+<div class="summary-card" data-tip="datadog: 18.2K metrics (ok)"><div class="value">18.2K metrics</div><div class="label">Custom Metrics</div></div>
+<div class="summary-card" data-tip="datadog: 231.4 GB/day (ok)"><div class="value">231.4 GB/day</div><div class="label">Log Volume</div></div>
+<div class="summary-card" data-tip="no measured figure; see Coverage &amp; Gaps"><div class="value">—</div><div class="label">Trace Volume</div></div>
+<div class="summary-card" data-tip="datadog: $41.2K (ok)"><div class="value">$41.2K</div><div class="label">Est. Observability Spend</div></div>
+<div class="summary-card" data-tip="reported by agent/user — not collector-verified"><div class="value">8 engineers</div><div class="label">Team Size</div></div></div>
 <div class="narrative">Two AWS EKS environments, all-in on Datadog for metrics/logs/alerting.</div>
 <div class="section"><h2>Environments</h2>
-<table><thead><tr><th>Environment</th><th>Cloud</th><th>Region</th><th>Cluster</th><th>Nodes</th><th>Services</th></tr></thead><tbody>
+<div class="table-wrap"><table><thead><tr><th>Environment</th><th>Cloud</th><th>Region</th><th>Cluster</th><th>Nodes</th><th>Services</th></tr></thead><tbody>
 <tr><td><strong>production</strong> <span class="env-badge env-prod">prod</span></td><td>aws</td><td>us-east-1</td><td>prod-eks</td><td>24</td><td>31</td></tr>
 <tr><td><strong>staging</strong> <span class="env-badge env-staging">staging</span></td><td>aws</td><td>us-east-1</td><td>stg-eks</td><td>6</td><td>28</td></tr>
-</tbody></table><p class="muted">Reported by discovery agent from kubectl/cloud CLI inventory.</p>
+</tbody></table></div><p class="muted">Reported by discovery agent from kubectl/cloud CLI inventory.</p>
 </div>
 <div class="section"><h2>Tech Stack</h2>
 <p><strong>Languages:</strong> <span class="tag tag-blue">Go</span> <span class="tag tag-blue">Python</span></p>
@@ -146,38 +162,38 @@
 <p><strong>Messaging:</strong> <span class="tag tag-orange">Kafka</span></p>
 </div>
 <div class="section"><h2>Observability Stack &amp; Scale</h2>
-<table><thead><tr><th>Signal</th><th>Tools</th><th>Measured Scale (hover for source)</th></tr></thead><tbody>
-<tr><td>Metrics</td><td><span class="tag tag-blue">Datadog</span></td><td><span title="datadog: 18.2K metrics (ok)">18.2K custom metrics</span> <span class="status-badge status-ok">ok</span><br><span title="datadog: 1.8K metrics (ok)">1.8K metric names</span> <span class="status-badge status-ok">ok</span></td></tr>
-<tr><td>Logs</td><td><span class="tag tag-blue">Datadog Logs</span></td><td><span title="datadog: 231.4 GB/day (ok)">231.40 GB/day ingested</span> <span class="status-badge status-ok">ok</span></td></tr>
-<tr><td>Alerting</td><td><span class="tag tag-blue">Datadog Monitors</span> <span class="tag tag-blue">PagerDuty</span></td><td><span title="datadog: 312 monitors (ok)">312 monitors</span> <span class="status-badge status-ok">ok</span></td></tr>
-</tbody></table>
+<div class="table-wrap"><table><thead><tr><th>Signal</th><th>Tools</th><th>Measured Scale (source shown; hover for detail)</th></tr></thead><tbody>
+<tr><td>Metrics</td><td><span class="tag tag-blue">Datadog</span></td><td><span data-tip="datadog: 18.2K metrics (ok)">18.2K custom metrics <span class="muted">· datadog</span></span> <span class="status-badge status-ok">ok</span><br><span data-tip="datadog: 1.8K metrics (ok)">1.8K metric names <span class="muted">· datadog</span></span> <span class="status-badge status-ok">ok</span></td></tr>
+<tr><td>Logs</td><td><span class="tag tag-blue">Datadog Logs</span></td><td><span data-tip="datadog: 231.4 GB/day (ok)">231.40 GB/day ingested <span class="muted">· datadog</span></span> <span class="status-badge status-ok">ok</span></td></tr>
+<tr><td>Alerting</td><td><span class="tag tag-blue">Datadog Monitors</span> <span class="tag tag-blue">PagerDuty</span></td><td><span data-tip="datadog: 312 monitors (ok)">312 monitors <span class="muted">· datadog</span></span> <span class="status-badge status-ok">ok</span></td></tr>
+</tbody></table></div>
 </div>
 <div class="section"><h2>Observability Spend (Estimated Monthly)</h2>
-<table><thead><tr><th>Source</th><th>Monthly Spend</th><th>Status</th><th>Method</th></tr></thead><tbody>
+<div class="table-wrap"><table><thead><tr><th>Source</th><th>Monthly Spend</th><th>Status</th><th>Method</th></tr></thead><tbody>
 <tr><td>datadog</td><td>$41.2K/mo</td><td><span class="status-badge status-ok">ok</span></td><td>Datadog estimated_cost API, last full month (2025-12) (same source as the Usage &amp; Cost page)</td></tr>
 <tr><td><span class="muted">└ infra_host</span></td><td><span class="muted">$28.0K/mo</span></td><td></td><td><span class="muted">total</span></td></tr>
 <tr><td><span class="muted">└ logs_indexed</span></td><td><span class="muted">$9.2K/mo</span></td><td></td><td><span class="muted">total</span></td></tr>
 <tr><td><span class="muted">└ timeseries</span></td><td><span class="muted">$4.0K/mo</span></td><td></td><td><span class="muted">total</span></td></tr>
 <tr><td>Datadog contract</td><td>$480K/yr committed</td><td><span class="status-badge status-reported">reported</span></td><td>stated by user; not verified</td></tr>
-</tbody></table><p><strong>Measured total: $41.2K/mo</strong> <span class="muted">(observability spend only; user-reported rows not included)</span></p>
+</tbody></table></div><p><strong>Measured total: $41.2K/mo</strong> <span class="muted">(observability spend only; user-reported rows not included)</span></p>
 </div>
 <div class="section"><h2>Observability Pain Points</h2>
 <div class="pain-point"><strong>Alert fatigue</strong><br>300+ monitors, many flapping nightly.</div>
 <div class="recommendation">Audit monitor thresholds; consolidate composites.</div>
 </div>
 <div class="section" id="coverage"><h2>Coverage &amp; Gaps</h2>
-<table><thead><tr><th>Collector</th><th>Figures collected</th><th>Target</th><th>Lookback</th></tr></thead><tbody>
+<div class="table-wrap"><table><thead><tr><th>Collector</th><th>Figures collected</th><th>Target</th><th>Lookback</th></tr></thead><tbody>
 <tr><td>datadog</td><td>8/9</td><td>https://api.datadoghq.com</td><td>30d</td></tr>
-</tbody></table>
+</tbody></table></div>
 <h3>Gaps</h3>
-<table><thead><tr><th>Collector</th><th>Area</th><th>Figures</th><th>Reason</th><th>Detail</th><th>Remediation</th></tr></thead><tbody>
+<div class="table-wrap"><table><thead><tr><th>Collector</th><th>Area</th><th>Figures</th><th>Reason</th><th>Detail</th><th>Remediation</th></tr></thead><tbody>
 <tr><td>datadog</td><td>traces</td><td><code>traces.ingest_gb_per_day</code></td><td><span class="tag tag-red">permission_denied</span></td><td>app key lacks usage_read for ingested_spans</td><td>grant usage_read to the application key</td></tr>
 <tr><td>cloudwatch</td><td>all</td><td>—</td><td><span class="tag tag-red">not_run</span></td><td>aws CLI not configured on this machine</td><td>—</td></tr>
-</tbody></table>
+</tbody></table></div>
 </div>
 <h2 style='margin:2rem 0 0.5rem'>Deep Dives</h2>
 <details class="deep-dive"><summary>datadog — collected details</summary><div class="deep-dive-body"><p class="muted">Detected: detected_backend=datadog, site=datadoghq.com</p>
-<table><thead><tr><th>Figure</th><th>Value</th><th>Status</th><th>Method / Reason</th><th>Window</th></tr></thead><tbody>
+<div class="table-wrap"><table><thead><tr><th>Figure</th><th>Value</th><th>Status</th><th>Method / Reason</th><th>Window</th></tr></thead><tbody>
 <tr><td>Active hosts</td><td>142 hosts</td><td><span class="status-badge status-ok">ok</span></td><td>hosts/totals total_active</td><td>—</td></tr>
 <tr><td>Active metric names</td><td>1.8K metrics</td><td><span class="status-badge status-ok">ok</span></td><td>count of metric names actively reporting in the last 2h</td><td>—</td></tr>
 <tr><td>Log ingestion</td><td>231.4 GB/day</td><td><span class="status-badge status-ok">ok</span></td><td>sum of hourly ingested_events_bytes / days</td><td>2026-05-13T10:00:00Z → 2026-06-12T10:00:00Z</td></tr>
@@ -187,29 +203,29 @@
 <tr><td>Trace ingestion</td><td>—</td><td><span class="status-badge status-unavailable">unavailable</span></td><td>permission_denied: app key lacks usage_read for ingested_spans</td><td>—</td></tr>
 <tr><td>Datadog cost, month to date (2026-01)</td><td>$1.4K</td><td><span class="status-badge status-ok">ok</span></td><td>Datadog estimated_cost API, current month</td><td>—</td></tr>
 <tr><td>Datadog cost, projected full month (2026-01)</td><td>~$43.1K</td><td><span class="status-badge status-estimated">estimated</span></td><td>linear extrapolation: month-to-date / 1 days elapsed x 31 days</td><td>—</td></tr>
-</tbody></table>
-<table><thead><tr><th>Fact</th><th>Value</th></tr></thead><tbody>
+</tbody></table></div>
+<div class="table-wrap"><table><thead><tr><th>Fact</th><th>Value</th></tr></thead><tbody>
 <tr><td>Dashboards count</td><td>87</td></tr>
 <tr><td>Cost breakdown month</td><td>2025-12</td></tr>
-</tbody></table>
+</tbody></table></div>
 <h3>Log indexes</h3>
-<table><thead><tr><th>name</th><th>retention days</th><th>daily limit</th></tr></thead><tbody>
+<div class="table-wrap"><table><thead><tr><th>name</th><th>retention days</th><th>daily limit</th></tr></thead><tbody>
 <tr><td>main</td><td>15</td><td>—</td></tr>
-</tbody></table>
+</tbody></table></div>
 <h3>Monitors by type</h3>
-<table><thead><tr><th>Key</th><th>Value</th></tr></thead><tbody>
+<div class="table-wrap"><table><thead><tr><th>Key</th><th>Value</th></tr></thead><tbody>
 <tr><td>metric alert</td><td>200</td></tr>
 <tr><td>log alert</td><td>80</td></tr>
 <tr><td>composite</td><td>32</td></tr>
-</tbody></table>
+</tbody></table></div>
 <h3>Cost breakdown</h3>
-<table><thead><tr><th>product</th><th>charge type</th><th>monthly usd</th></tr></thead><tbody>
+<div class="table-wrap"><table><thead><tr><th>product</th><th>charge type</th><th>monthly usd</th></tr></thead><tbody>
 <tr><td>infra_host</td><td>total</td><td>28000.5</td></tr>
 <tr><td>logs_indexed</td><td>total</td><td>9230.0</td></tr>
 <tr><td>timeseries</td><td>total</td><td>4000.0</td></tr>
-</tbody></table></div></details>
+</tbody></table></div></div></details>
 <div class="section"><h2>Provenance Appendix</h2>
-<p class="muted">Every measured figure below can be re-derived from the raw API response captured in the listed evidence file (under each collector's output directory).</p><table class="provenance"><thead><tr><th>Figure</th><th>Collector</th><th>Source API</th><th>Query</th><th>Evidence</th></tr></thead><tbody>
+<p class="muted">Every measured figure below can be re-derived from the raw API response captured in the listed evidence file (under each collector's output directory).</p><div class="table-wrap"><table class="provenance"><thead><tr><th>Figure</th><th>Collector</th><th>Source API</th><th>Query</th><th>Evidence</th></tr></thead><tbody>
 <tr><td><code>hosts.count</code></td><td>datadog</td><td>GET /api/v1/hosts/totals</td><td>—</td><td><code>evidence/hosts_totals.json</code></td></tr>
 <tr><td><code>metrics.total_count</code></td><td>datadog</td><td>GET /api/v1/metrics?from=&lt;2h ago&gt;</td><td>—</td><td><code>evidence/metrics_list.json</code></td></tr>
 <tr><td><code>logs.ingest_gb_per_day</code></td><td>datadog</td><td>GET /api/v2/usage/hourly_usage?filter[product_families]=logs</td><td>usage_type=ingested_events_bytes</td><td><code>evidence/usage_hourly_logs.json</code></td></tr>
@@ -218,7 +234,7 @@
 <tr><td><code>alerts.monitor_count</code></td><td>datadog</td><td>GET /api/v1/monitor</td><td>—</td><td><code>evidence/monitors.json</code></td></tr>
 <tr><td><code>datadog.cost_month_to_date_usd</code></td><td>datadog</td><td>GET /api/v2/usage/estimated_cost?view=summary</td><td>—</td><td><code>evidence/estimated_cost.json</code></td></tr>
 <tr><td><code>datadog.cost_projected_month_usd</code></td><td>datadog</td><td>GET /api/v2/usage/estimated_cost?view=summary</td><td>—</td><td><code>evidence/estimated_cost.json</code></td></tr>
-</tbody></table>
+</tbody></table></div>
 </div>
 </div>
 <div class="footer">

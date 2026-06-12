@@ -20,6 +20,7 @@ Figure <-> API mapping is documented in collectors/datadog/README.md.
 from __future__ import annotations
 
 import sys
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -154,46 +155,87 @@ def fetch_slos(client: HttpClient, ev: EvidenceWriter, results: dict[str, Any]) 
     ev.write("slos", results["slos"], source_api="GET /api/v1/slo (paginated)")
 
 
-def fetch_hourly_usage(
-    client: HttpClient,
-    families: list[str],
-    start_hr: str,
-    end_hr: str,
-    ev: EvidenceWriter,
-    results: dict[str, Any],
-) -> dict[str, FetchResult]:
-    """Fetch v2 hourly usage for all product families in ONE call, paginated.
+HOURLY_CHUNK = timedelta(days=7)
+HOURLY_CHUNK_WORKERS = 3
 
-    Two fixes over the oodlectl version:
-    - pagination via meta.pagination.next_record_id (responses cap at 500
-      records; a 30d window is 720+ hours per family)
-    - a single comma-separated product_families filter instead of one call
-      per family: this endpoint costs ~3s server-side per call regardless of
-      payload, so 6 sequential calls dominated the collector's runtime
-    """
-    families_param = ",".join(families)
-    print(f"collecting hourly usage ({families_param})")
+
+def _fetch_hourly_chunk(
+    client: HttpClient,
+    families_param: str,
+    chunk_start: datetime,
+    chunk_end: datetime,
+) -> tuple[list[Any], FetchResult | None]:
     records: list[Any] = []
     next_id: str | None = None
-    first_error: FetchResult | None = None
-    for _ in range(100):  # hard page cap
+    for _ in range(50):  # per-chunk page cap
         params = {
             "filter[product_families]": families_param,
-            "filter[timestamp][start]": start_hr,
-            "filter[timestamp][end]": end_hr,
+            "filter[timestamp][start]": chunk_start.strftime("%Y-%m-%dT%H:00:00+00:00"),
+            "filter[timestamp][end]": chunk_end.strftime("%Y-%m-%dT%H:00:00+00:00"),
         }
         if next_id:
             params["page[next_record_id]"] = next_id
         res = client.get_json("/api/v2/usage/hourly_usage", params=params)
         if not res.ok:
-            first_error = res
-            break
+            return records, res
         records.extend(res.data.get("data", []))
-        next_id = (
-            res.data.get("meta", {}).get("pagination", {}).get("next_record_id")
-        )
+        next_id = res.data.get("meta", {}).get("pagination", {}).get("next_record_id")
         if not next_id:
             break
+    return records, None
+
+
+def fetch_hourly_usage(
+    client: HttpClient,
+    families: list[str],
+    start: datetime,
+    end: datetime,
+    ev: EvidenceWriter,
+    results: dict[str, Any],
+) -> dict[str, FetchResult]:
+    """Fetch v2 hourly usage for all product families, paginated, in <=7d
+    window chunks fetched with bounded parallelism.
+
+    Fixes over the oodlectl version (all verified against a real org):
+    - pagination via meta.pagination.next_record_id (responses cap at 500
+      records; a 30d window is 720+ hours per family)
+    - one comma-separated product_families filter instead of a call per
+      family (the endpoint has a high fixed cost per request)
+    - the window is fetched as <=7d chunks: recent windows answer in ~5s
+      but historical ones take ~14s/page, so a sequential 30d fetch ran
+      ~5 minutes. Chunks run on a small thread pool (3 workers - 6 fully
+      concurrent whole-window queries tripped 504s) with record-level
+      dedup at chunk boundaries.
+    """
+    families_param = ",".join(families)
+    chunks: list[tuple[datetime, datetime]] = []
+    chunk_start = start
+    while chunk_start < end:
+        chunk_end = min(chunk_start + HOURLY_CHUNK, end)
+        chunks.append((chunk_start, chunk_end))
+        chunk_start = chunk_end
+    print(f"collecting hourly usage ({families_param}; {len(chunks)} window chunk(s))")
+    if len(chunks) > 2:
+        print("  note: historical hourly-usage windows are slow on Datadog's side; "
+              "expect ~15s per week of lookback")
+
+    records: list[Any] = []
+    seen: set[str] = set()  # chunk boundaries can return the boundary hour twice
+    first_error: FetchResult | None = None
+    with ThreadPoolExecutor(max_workers=HOURLY_CHUNK_WORKERS) as pool:
+        chunk_results = pool.map(
+            lambda c: _fetch_hourly_chunk(client, families_param, c[0], c[1]), chunks
+        )
+        for chunk_records, err in chunk_results:
+            if err is not None and first_error is None:
+                first_error = err
+            for rec in chunk_records:
+                attrs = rec.get("attributes", {})
+                key = rec.get("id") or f"{attrs.get('product_family')}|{attrs.get('timestamp')}"
+                if key in seen:
+                    continue
+                seen.add(key)
+                records.append(rec)
     if not records and first_error is not None:
         print(f"  WARN hourly usage: {first_error.error}")
         return {f"usage_hourly_{f}": first_error for f in families}
@@ -729,7 +771,12 @@ def build_summary(
 
 
 def main() -> int:
-    parser = base_parser("Datadog discovery collector", default_lookback="30d")
+    # 7d default: hourly-usage queries over recent windows are fast and one
+    # full weekly cycle is representative; cost figures are month-based
+    # regardless of lookback. Pass --lookback 30d when invoice-window parity
+    # for volumes matters (adds ~1 min: Datadog serves historical hourly
+    # windows slowly).
+    parser = base_parser("Datadog discovery collector", default_lookback="7d")
     parser.add_argument("--api-key", help="Datadog API key (or env DD_API_KEY)")
     parser.add_argument("--app-key", help="Datadog application key (or env DD_APP_KEY)")
     parser.add_argument(
@@ -764,8 +811,7 @@ def main() -> int:
         headers.update(parse_headers(args.header))
         now = datetime.now(UTC)
         lookback_days = parse_duration_days(args.lookback)
-        start_hr = (now - timedelta(days=lookback_days)).strftime("%Y-%m-%dT%H:00:00+00:00")
-        end_hr = now.strftime("%Y-%m-%dT%H:00:00+00:00")
+        usage_start = now - timedelta(days=lookback_days)
         with HttpClient(
             f"https://api.{domain}",
             headers=headers,
@@ -777,7 +823,7 @@ def main() -> int:
             fetch_slos(client, ev, results)
             fetch_usage_summary(client, now, lookback_days, ev, results)
             fetches.update(
-                fetch_hourly_usage(client, HOURLY_FAMILIES, start_hr, end_hr, ev, results)
+                fetch_hourly_usage(client, HOURLY_FAMILIES, usage_start, now, ev, results)
             )
             fetches["estimated_cost"] = fetch_estimated_cost(client, now, ev, results)
             fetches["historical_cost"] = fetch_historical_cost(client, now, ev, results)

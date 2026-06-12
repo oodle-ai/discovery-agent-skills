@@ -265,8 +265,11 @@ def observability_section(figures: dict, ctx: dict) -> str:
             agg = aggregate(figures, fid)
             if agg is not None:
                 val = T.format_value(agg.value, "", agg.status).strip()
+                sources = ", ".join(sorted({c for c, _ in figures.get(fid, [])}))
                 scale_bits.append(
-                    f'<span title="{T.esc("; ".join(agg.parts))}">{val} {T.esc(suffix)}</span> '
+                    f'<span data-tip="{T.esc(chr(10).join(agg.parts))}">'
+                    f"{val} {T.esc(suffix)} "
+                    f'<span class="muted">· {T.esc(sources)}</span></span> '
                     + T.status_badge(agg.status)
                 )
         tools = tools_by_signal.get(signal, [])
@@ -279,7 +282,7 @@ def observability_section(figures: dict, ctx: dict) -> str:
         ])
     if not rows:
         return ""
-    inner = T.table(["Signal", "Tools", "Measured Scale (hover for source)"], rows)
+    inner = T.table(["Signal", "Tools", "Measured Scale (source shown; hover for detail)"], rows)
     user_bits = [
         f"<li><strong>{T.esc(u['label'])}:</strong> {T.esc(u['value'])} "
         f"{T.status_badge('reported')}</li>"

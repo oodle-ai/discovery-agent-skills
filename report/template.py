@@ -120,10 +120,26 @@ CSS = """
   details.deep-dive > .deep-dive-body { padding: 0 1.75rem 1.5rem; }
   .provenance { font-size: 0.8rem; }
   .provenance td { font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-                   font-size: 0.75rem; }
+                   font-size: 0.75rem; vertical-align: top; }
+  .provenance td:nth-child(1), .provenance td:nth-child(2) { white-space: nowrap; }
+  .table-wrap { overflow-x: auto; }
   .muted { color: var(--text-muted); font-size: 0.85rem; }
   code { background: #f1f5f9; padding: 0.1rem 0.3rem; border-radius: 4px;
-         font-size: 0.85em; word-break: break-all; }
+         font-size: 0.85em; overflow-wrap: anywhere; }
+
+  /* pure-CSS tooltips (title attributes are unreliable/invisible) */
+  [data-tip] { position: relative; cursor: help; }
+  [data-tip]:hover::after {
+    content: attr(data-tip);
+    position: absolute; left: 50%; transform: translateX(-50%);
+    bottom: calc(100% + 6px);
+    background: var(--primary); color: #f1f5f9;
+    padding: 0.45rem 0.65rem; border-radius: 6px;
+    font-size: 0.75rem; font-weight: 400; line-height: 1.4;
+    white-space: pre-line; width: max-content; max-width: 340px;
+    text-align: left; z-index: 10; pointer-events: none;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.25);
+  }
 """
 
 
@@ -159,7 +175,7 @@ def section(title: str, inner: str, section_id: str | None = None) -> str:
 
 
 def card(value: str, label: str, tooltip: str | None = None) -> str:
-    tip = f' title="{esc(tooltip)}"' if tooltip else ""
+    tip = f' data-tip="{esc(tooltip)}"' if tooltip else ""
     return (
         f'<div class="summary-card"{tip}><div class="value">{esc(value)}</div>'
         f'<div class="label">{esc(label)}</div></div>'
@@ -184,7 +200,10 @@ def table(headers: list[str], rows: list[list[str]], css_class: str = "") -> str
     cls = f' class="{esc(css_class)}"' if css_class else ""
     head = "".join(f"<th>{esc(h)}</th>" for h in headers)
     body = "\n".join("<tr>" + "".join(f"<td>{c}</td>" for c in row) + "</tr>" for row in rows)
-    return f"<table{cls}><thead><tr>{head}</tr></thead><tbody>\n{body}\n</tbody></table>"
+    return (
+        f'<div class="table-wrap"><table{cls}><thead><tr>{head}</tr></thead>'
+        f"<tbody>\n{body}\n</tbody></table></div>"
+    )
 
 
 def narrative_block(text: str) -> str:
