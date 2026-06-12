@@ -34,12 +34,11 @@ def mock_datadog(respx_mock, estimated_cost_status=200, hourly_pages=1):
     )
 
     def hourly_side_effect(request: httpx.Request) -> httpx.Response:
-        family = request.url.params.get("filter[product_families]")
-        payload = fx.HOURLY_RESPONSES[family]
+        families = request.url.params.get("filter[product_families]").split(",")
+        records = [r for f in families for r in fx.HOURLY_RESPONSES[f]["data"]]
         if hourly_pages == 1:
-            return httpx.Response(200, json=payload)
+            return httpx.Response(200, json={"data": records})
         # split records into pages to exercise pagination
-        records = payload["data"]
         half = len(records) // 2
         if "page[next_record_id]" not in request.url.params:
             return httpx.Response(

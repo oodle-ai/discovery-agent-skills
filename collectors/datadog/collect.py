@@ -141,26 +141,29 @@ def fetch_slos(client: HttpClient, ev: EvidenceWriter, results: dict[str, Any]) 
 
 def fetch_hourly_usage(
     client: HttpClient,
-    family: str,
+    families: list[str],
     start_hr: str,
     end_hr: str,
     ev: EvidenceWriter,
     results: dict[str, Any],
-) -> FetchResult:
-    """Fetch v2 hourly usage for a product family, following pagination.
+) -> dict[str, FetchResult]:
+    """Fetch v2 hourly usage for all product families in ONE call, paginated.
 
-    The oodlectl version did not paginate; responses cap at 500 records, so a
-    30d window (720 hours) silently lost data. We follow
-    meta.pagination.next_record_id until exhausted.
+    Two fixes over the oodlectl version:
+    - pagination via meta.pagination.next_record_id (responses cap at 500
+      records; a 30d window is 720+ hours per family)
+    - a single comma-separated product_families filter instead of one call
+      per family: this endpoint costs ~3s server-side per call regardless of
+      payload, so 6 sequential calls dominated the collector's runtime
     """
-    name = f"usage_hourly_{family}"
-    print(f"collecting {name}")
+    families_param = ",".join(families)
+    print(f"collecting hourly usage ({families_param})")
     records: list[Any] = []
     next_id: str | None = None
     first_error: FetchResult | None = None
-    for _ in range(50):  # hard page cap
+    for _ in range(100):  # hard page cap
         params = {
-            "filter[product_families]": family,
+            "filter[product_families]": families_param,
             "filter[timestamp][start]": start_hr,
             "filter[timestamp][end]": end_hr,
         }
@@ -177,12 +180,26 @@ def fetch_hourly_usage(
         if not next_id:
             break
     if not records and first_error is not None:
-        print(f"  WARN {name}: {first_error.error}")
-        return first_error
-    payload = {"data": records}
-    results[name] = payload
-    ev.write(name, payload, source_api="GET /api/v2/usage/hourly_usage (paginated)")
-    return FetchResult(ok=True, data=payload)
+        print(f"  WARN hourly usage: {first_error.error}")
+        return {f"usage_hourly_{f}": first_error for f in families}
+    by_family: dict[str, list[Any]] = {f: [] for f in families}
+    for rec in records:
+        fam = rec.get("attributes", {}).get("product_family")
+        if fam in by_family:
+            by_family[fam].append(rec)
+    fetches: dict[str, FetchResult] = {}
+    for fam in families:
+        key = f"usage_hourly_{fam}"
+        payload = {"data": by_family[fam]}
+        results[key] = payload
+        ev.write(
+            key,
+            payload,
+            source_api="GET /api/v2/usage/hourly_usage"
+            f"?filter[product_families]={families_param} (paginated, split by family)",
+        )
+        fetches[key] = FetchResult(ok=True, data=payload)
+    return fetches
 
 
 def fetch_usage_summary(
@@ -320,8 +337,8 @@ def add_hourly_figure(
             status="ok",
             method=method,
             source_api="GET /api/v2/usage/hourly_usage"
-            f"?filter[product_families]={family}",
-            query=f"usage_type={usage_type}",
+            f"?filter[product_families]={','.join(HOURLY_FAMILIES)}",
+            query=f"product_family={family}, usage_type={usage_type}",
             time_window=window_of(values),
             evidence_files=[f"evidence/{key}.json"],
         )
@@ -573,10 +590,9 @@ def main() -> int:
             fetches["monitors"] = fetch_monitors(client, ev, results)
             fetch_slos(client, ev, results)
             fetch_usage_summary(client, now, lookback_days, ev, results)
-            for family in HOURLY_FAMILIES:
-                fetches[f"usage_hourly_{family}"] = fetch_hourly_usage(
-                    client, family, start_hr, end_hr, ev, results
-                )
+            fetches.update(
+                fetch_hourly_usage(client, HOURLY_FAMILIES, start_hr, end_hr, ev, results)
+            )
             fetches["estimated_cost"] = fetch_estimated_cost(client, now, ev, results)
             fetches["metrics_list"] = fetch_metrics_list(client, now, ev, results)
 
