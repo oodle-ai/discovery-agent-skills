@@ -2,7 +2,7 @@
 
 <p align="center"><strong>Runs entirely in your environment · Read-only operations only · No data shared externally</strong></p>
 
-Automated tech stack and observability discovery for AI coding agents. Install the skill, run a single prompt, and get a comprehensive HTML report of your infrastructure, observability tools, scale, costs, and pain points.
+Automated tech stack and observability discovery for AI coding agents. Install the skill, run a single prompt, and get a verifiable HTML report of your infrastructure, observability tools, scale, observability costs, and pain points.
 
 ## What It Does
 
@@ -10,13 +10,30 @@ The discovery agent systematically examines your environment to produce a tailor
 
 - **Environments** — Cloud accounts, Kubernetes clusters, regions, dev/staging/prod
 - **Tech Stack** — Languages, frameworks, databases, message queues, caches
-- **Infrastructure** — Compute, networking, storage, IaC
+- **Infrastructure** — Compute scale and telemetry-relevant managed services (broad inventory only)
 - **Observability Stack** — Monitoring, logging, tracing, alerting tools
-- **Scale** — Request rates, data volumes, node/pod counts
-- **Costs** — Cloud spend, observability tool costs
+- **Scale** — Telemetry volumes (metrics, log GB/day, trace ingestion) measured by deterministic collector scripts
+- **Costs** — Observability spend only (vendor usage/billing APIs); never your overall cloud bill
 - **Pain Points** — Observability-specific: alert fatigue, coverage gaps, tool sprawl, cost concerns
 
 The agent presents a plan before proceeding, asks clarifying questions when it can't find information programmatically, and never performs destructive operations.
+
+## How figures stay accurate
+
+Detection is agent-driven, but **every volume and cost figure in the report is computed by a
+deterministic collector script** (`collectors/<tool>/collect.py`) — not by the AI agent:
+
+- Collectors query the same authoritative APIs that back each vendor's own usage/billing pages
+  (e.g., the Datadog hourly usage and estimated-cost APIs).
+- Every raw API response is saved (with credentials redacted) under `discovery-output/<tool>/evidence/`,
+  and every figure records the endpoint, query, derivation method, and time window that produced it.
+- Anything that couldn't be collected appears in the report's **Coverage & Gaps** section with the
+  reason (e.g., `permission_denied`) and a remediation — never silently omitted, never guessed.
+- The report itself is rendered by `report/generate_report.py`; the agent cannot edit figures.
+
+Collector status: **Datadog** is available today. Prometheus/Thanos/VictoriaMetrics/Loki/Tempo,
+Elasticsearch/OpenSearch, Mimir, AWS CloudWatch, and GCP Cloud Operations collectors are in progress;
+until they ship, those tools are covered by user-reported numbers, clearly marked as unverified.
 
 ## Install
 
@@ -56,37 +73,56 @@ Discover my tech stack and observability setup and generate a report
 The agent will:
 1. Present a discovery plan for your approval
 2. Run read-only commands to discover your environment
-3. Ask clarifying questions for anything it can't find automatically
-4. Generate a self-contained HTML report and open it in your browser
+3. Run the matching collector script for each observability tool it finds (asking for read-only API credentials where needed)
+4. Ask clarifying questions for anything it can't measure automatically
+5. Generate a self-contained HTML report, walk you through any coverage gaps, and open it in your browser
 
 ## Safety
 
 - **Read-only** — Never modifies, creates, or deletes any resources
-- **Rate-limited** — Throttles API calls to avoid overwhelming systems
-- **Transparent** — Shows you the plan before executing
-- **Graceful** — Skips checks it can't perform (missing tools, no credentials) and notes gaps
+- **Rate-limited** — Throttles API calls to avoid overwhelming systems; collectors self-throttle with circuit breakers
+- **Credentials stay local** — Passed to collectors via environment variables, redacted from all saved output
+- **Transparent** — Shows you the plan before executing; every figure links to its raw API evidence
+- **Graceful** — Skips checks it can't perform (missing tools, no credentials) and reports gaps explicitly
 
 ## Output
 
-The report is a single self-contained HTML file (no external dependencies) saved to `./discovery-report.html` in your current working directory and opened in your default browser. It includes:
+The report is a single self-contained HTML file (no external dependencies) saved to `./discovery-report.html` and opened in your default browser. It includes:
 
-- Executive summary with key metrics
-- Per-environment breakdown
-- Visual tags for technologies
-- Pain points highlighted with recommendations
-- Professional styling suitable for sharing
+- Executive summary with measured scale and observability-spend figures
+- Per-environment breakdown and tech-stack tags
+- **Coverage & Gaps** — what could not be measured and how to fix it
+- Collapsible per-tool deep dives
+- **Provenance appendix** — every figure mapped to its source API, query, and evidence file
 
-**See a sample report:** [examples/sample-report.html](examples/sample-report.html) — open it in your browser to see the expected format and level of detail.
+Raw evidence lives in `./discovery-output/` so any figure can be re-derived offline
+(`uv run collectors/<tool>/collect.py --report-only --output-dir ./discovery-output/<tool>`).
+
+**See a sample report:** [examples/sample-report.html](examples/sample-report.html) — generated from the synthetic test fixtures in this repo.
 
 ## Requirements
 
-The skill works best when run from a machine with access to your infrastructure. Common tools it leverages (all optional — it skips what's unavailable):
+- `uv` (https://docs.astral.sh/uv/) and Python ≥ 3.11 — used to run collector scripts. If unavailable, the skill runs in degraded mode (no measured figures, gaps reported).
+
+Optional, used when present:
 
 - `kubectl` — Kubernetes cluster discovery
-- `aws` CLI — AWS resource and cost discovery
-- `gcloud` CLI — GCP resource discovery
-- `az` CLI — Azure resource discovery
+- `aws` / `gcloud` / `az` CLIs — cloud environment discovery
+- Read-only API keys for your observability vendors (e.g., Datadog API + application key with `usage_read`)
 - Access to your code repository (for IaC and dependency detection)
+
+## Development
+
+```bash
+uv sync --group dev
+uv run pytest tests
+uvx ruff check collectors report tests
+```
+
+Collector output contract: [schemas/summary.schema.json](schemas/summary.schema.json).
+Agent context contract: [schemas/context.schema.json](schemas/context.schema.json).
+Each collector documents its figure ↔ API mapping in its own README
+(e.g., [collectors/datadog/README.md](collectors/datadog/README.md)).
 
 ## Platform Plugin Notes
 

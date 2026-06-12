@@ -1,0 +1,107 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/oodle-ai/discovery-agent-skills/schemas/summary.schema.json",
+  "title": "Collector summary",
+  "description": "Machine-readable output of a discovery collector. Every figure in the discovery report is injected from one of these files by report/generate_report.py; the agent never computes figures. Cross-tool figure IDs (aggregated by the report generator): metrics.active_series, metrics.samples_per_sec, metrics.total_count, metrics.custom_metrics_count, logs.ingest_gb_per_day, logs.stored_gb, logs.retention_days, traces.spans_per_sec, traces.ingest_gb_per_day, cost.monthly_usd, alerts.monitor_count, hosts.count. Collector-specific figures use the '<collector>.' prefix.",
+  "type": "object",
+  "required": ["schema_version", "collector", "collector_version", "run", "figures", "gaps"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "const": "1.0" },
+    "collector": { "type": "string", "pattern": "^[a-z0-9_]+$" },
+    "collector_version": { "type": "string" },
+    "run": {
+      "type": "object",
+      "required": ["started_at", "finished_at", "target", "lookback"],
+      "additionalProperties": true,
+      "properties": {
+        "started_at": { "type": "string", "format": "date-time" },
+        "finished_at": { "type": "string", "format": "date-time" },
+        "target": { "type": "string", "description": "Endpoint/site/account collected from, redacted of credentials" },
+        "lookback": { "type": "string", "description": "e.g. 7d, 30d" },
+        "args_redacted": { "type": "object" }
+      }
+    },
+    "environment": {
+      "type": "object",
+      "description": "What the collector detected about the target environment (backend flavor, version, tenancy, site/region).",
+      "additionalProperties": true,
+      "properties": {
+        "detected_backend": { "type": "string" },
+        "version": { "type": ["string", "null"] },
+        "detection_method": { "type": "string" },
+        "tenancy": { "type": "string" }
+      }
+    },
+    "figures": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "label", "value", "unit", "status"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "string", "pattern": "^[a-z0-9_]+(\\.[a-z0-9_]+)+$" },
+          "label": { "type": "string" },
+          "value": { "type": ["number", "null"] },
+          "unit": { "type": "string" },
+          "status": { "enum": ["ok", "estimated", "partial", "unavailable"] },
+          "method": {
+            "type": ["string", "null"],
+            "description": "How the value was derived, in one sentence. Required (non-null) unless status is unavailable."
+          },
+          "source_api": { "type": ["string", "null"], "description": "The API endpoint that produced the value" },
+          "query": { "type": ["string", "null"], "description": "Exact query/parameters where applicable (PromQL, CE filter, ...)" },
+          "time_window": {
+            "type": ["object", "null"],
+            "required": ["start", "end"],
+            "additionalProperties": false,
+            "properties": {
+              "start": { "type": "string", "format": "date-time" },
+              "end": { "type": "string", "format": "date-time" }
+            }
+          },
+          "evidence_files": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Paths (relative to the collector output dir) of raw API responses backing this figure"
+          },
+          "notes": { "type": ["string", "null"] },
+          "unavailable_reason": { "type": ["string", "null"] },
+          "remediation": { "type": ["string", "null"] }
+        }
+      }
+    },
+    "inventory": {
+      "type": "object",
+      "description": "Tool-specific non-numeric facts (counts, names, retention tables, top-N lists) for the deep-dive report section.",
+      "additionalProperties": true
+    },
+    "gaps": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["area", "figure_ids", "reason", "detail"],
+        "additionalProperties": false,
+        "properties": {
+          "area": { "type": "string" },
+          "figure_ids": { "type": "array", "items": { "type": "string" } },
+          "reason": {
+            "enum": [
+              "permission_denied",
+              "auth_failed",
+              "endpoint_404",
+              "version_unsupported",
+              "timeout",
+              "not_configured",
+              "user_declined",
+              "not_collected",
+              "api_error"
+            ]
+          },
+          "detail": { "type": "string" },
+          "remediation": { "type": ["string", "null"] }
+        }
+      }
+    }
+  }
+}

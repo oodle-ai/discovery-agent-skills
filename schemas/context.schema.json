@@ -1,0 +1,130 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/oodle-ai/discovery-agent-skills/schemas/context.schema.json",
+  "title": "Discovery context",
+  "description": "Qualitative discovery context written by the agent (environments, tech stack, pain points, user-reported facts). The report generator renders everything here as 'reported - not verified'. Numbers in this file never override collector figures; figure-ID collisions are rejected in --strict mode.",
+  "type": "object",
+  "required": ["schema_version"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "const": "1.0" },
+    "company": { "type": "string" },
+    "generated_by": { "type": "string", "description": "Agent/platform that wrote this file" },
+    "team_size": { "type": ["string", "null"], "description": "e.g. '12 engineers, 2 SRE' (user-reported)" },
+    "environments": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name"],
+        "additionalProperties": false,
+        "properties": {
+          "name": { "type": "string" },
+          "kind": { "enum": ["prod", "staging", "dev", "other"], "default": "other" },
+          "cloud": { "type": ["string", "null"], "description": "aws | gcp | azure | on-prem | ..." },
+          "region": { "type": ["string", "null"] },
+          "cluster": { "type": ["string", "null"] },
+          "nodes": { "type": ["integer", "null"] },
+          "services": { "type": ["integer", "null"] },
+          "vcpu": { "type": ["integer", "null"] },
+          "memory_gi": { "type": ["integer", "null"] },
+          "notes": { "type": ["string", "null"] }
+        }
+      }
+    },
+    "tech_stack": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "languages": { "type": "array", "items": { "type": "string" } },
+        "databases": { "type": "array", "items": { "type": "string" } },
+        "messaging": { "type": "array", "items": { "type": "string" } },
+        "infra": { "type": "array", "items": { "type": "string" } },
+        "other": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "infra_inventory": {
+      "type": "object",
+      "description": "Broad, Oodle-relevant inventory only (counts/SKUs, no costs): clusters, node totals, instance families, telemetry-source managed services.",
+      "additionalProperties": false,
+      "properties": {
+        "kubernetes_clusters": { "type": ["integer", "null"] },
+        "total_nodes": { "type": ["integer", "null"] },
+        "total_services": { "type": ["integer", "null"] },
+        "instance_families": { "type": "array", "items": { "type": "string" } },
+        "managed_services": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["type"],
+            "additionalProperties": false,
+            "properties": {
+              "type": { "type": "string", "description": "e.g. RDS, MSK, Lambda, EKS, Cloud SQL" },
+              "count": { "type": ["integer", "null"] },
+              "notes": { "type": ["string", "null"] }
+            }
+          }
+        },
+        "regions": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "observability_stack": {
+      "type": "array",
+      "description": "Agent-detected observability tooling per signal (qualitative; volumes come from collectors).",
+      "items": {
+        "type": "object",
+        "required": ["signal", "tools"],
+        "additionalProperties": false,
+        "properties": {
+          "signal": { "enum": ["metrics", "logs", "traces", "alerting", "dashboards", "other"] },
+          "tools": { "type": "array", "items": { "type": "string" } },
+          "notes": { "type": ["string", "null"] }
+        }
+      }
+    },
+    "pain_points": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["title", "detail"],
+        "additionalProperties": false,
+        "properties": {
+          "title": { "type": "string" },
+          "detail": { "type": "string" },
+          "recommendation": { "type": ["string", "null"] }
+        }
+      }
+    },
+    "user_reported": {
+      "type": "array",
+      "description": "Numbers/facts the user stated that no collector could verify. Rendered as 'reported - not verified'.",
+      "items": {
+        "type": "object",
+        "required": ["label", "value", "area"],
+        "additionalProperties": false,
+        "properties": {
+          "label": { "type": "string" },
+          "value": { "type": "string", "description": "Verbatim as reported, including units (string, not number)" },
+          "area": { "enum": ["metrics", "logs", "traces", "cost", "retention", "alerting", "other"] },
+          "notes": { "type": ["string", "null"] }
+        }
+      }
+    },
+    "skipped_collectors": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["tool", "reason"],
+        "additionalProperties": false,
+        "properties": {
+          "tool": { "type": "string" },
+          "reason": { "type": "string" }
+        }
+      }
+    },
+    "narrative": {
+      "type": "object",
+      "description": "Short prose paragraphs per report section, keyed by section id (overview, environments, observability, costs, pain_points).",
+      "additionalProperties": { "type": "string" }
+    }
+  }
+}

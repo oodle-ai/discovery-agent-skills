@@ -1,0 +1,39 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.11"
+      - name: Lint
+        run: uvx ruff check collectors report tests
+      - name: Tests
+        run: |
+          uv sync --group dev
+          uv run pytest tests -q
+      - name: Sample report freshness
+        run: |
+          uv run report/generate_report.py \
+            --summaries tests/fixtures/datadog_summary.json \
+            --context tests/fixtures/context.json \
+            --out /tmp/sample-report.html --strict --date 2026-01-01
+          diff -u examples/sample-report.html /tmp/sample-report.html \
+            || (echo "examples/sample-report.html is stale; regenerate it from tests/fixtures" && exit 1)
+
+  secret-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

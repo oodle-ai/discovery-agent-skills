@@ -1,0 +1,110 @@
+{
+  "schema_version": "1.0",
+  "company": "Acme Corp (fictional sample)",
+  "team_size": "8 engineers",
+  "environments": [
+    {
+      "name": "production",
+      "kind": "prod",
+      "cloud": "aws",
+      "region": "us-east-1",
+      "cluster": "prod-eks",
+      "nodes": 24,
+      "services": 31
+    },
+    {
+      "name": "staging",
+      "kind": "staging",
+      "cloud": "aws",
+      "region": "us-east-1",
+      "cluster": "stg-eks",
+      "nodes": 6,
+      "services": 28
+    }
+  ],
+  "tech_stack": {
+    "languages": [
+      "Go",
+      "Python"
+    ],
+    "databases": [
+      "PostgreSQL",
+      "Redis"
+    ],
+    "messaging": [
+      "Kafka"
+    ],
+    "infra": [
+      "Terraform",
+      "Helm"
+    ],
+    "other": []
+  },
+  "infra_inventory": {
+    "kubernetes_clusters": 2,
+    "total_nodes": 30,
+    "total_services": 59,
+    "instance_families": [
+      "m6i",
+      "r6i"
+    ],
+    "managed_services": [
+      {
+        "type": "RDS",
+        "count": 4,
+        "notes": null
+      }
+    ],
+    "regions": [
+      "us-east-1"
+    ]
+  },
+  "observability_stack": [
+    {
+      "signal": "metrics",
+      "tools": [
+        "Datadog"
+      ],
+      "notes": null
+    },
+    {
+      "signal": "logs",
+      "tools": [
+        "Datadog Logs"
+      ],
+      "notes": null
+    },
+    {
+      "signal": "alerting",
+      "tools": [
+        "Datadog Monitors",
+        "PagerDuty"
+      ],
+      "notes": null
+    }
+  ],
+  "pain_points": [
+    {
+      "title": "Alert fatigue",
+      "detail": "300+ monitors, many flapping nightly.",
+      "recommendation": "Audit monitor thresholds; consolidate composites."
+    }
+  ],
+  "user_reported": [
+    {
+      "label": "Datadog contract",
+      "value": "$480K/yr committed",
+      "area": "cost",
+      "notes": null
+    }
+  ],
+  "skipped_collectors": [
+    {
+      "tool": "cloudwatch",
+      "reason": "aws CLI not configured on this machine"
+    }
+  ],
+  "narrative": {
+    "overview": "Two AWS EKS environments, all-in on Datadog for metrics/logs/alerting."
+  }
+}

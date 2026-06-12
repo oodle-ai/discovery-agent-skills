@@ -1,0 +1,589 @@
+# /// script
+# requires-python = ">=3.11"
+# dependencies = ["httpx"]
+# ///
+"""Datadog discovery collector.
+
+Collects inventory and usage figures from the same Datadog APIs that back the
+account's own Usage & Cost pages, writes redacted raw responses to
+evidence/, and emits summary.json (see schemas/summary.schema.json).
+
+Examples:
+    uv run collectors/datadog/collect.py --output-dir ./discovery-output/datadog
+    DD_API_KEY=... DD_APP_KEY=... uv run collectors/datadog/collect.py \\
+        --site us5 --lookback 30d --output-dir ./discovery-output/datadog
+    uv run collectors/datadog/collect.py --report-only --output-dir ./discovery-output/datadog
+
+Figure <-> API mapping is documented in collectors/datadog/README.md.
+"""
+
+from __future__ import annotations
+
+import sys
+from datetime import UTC, datetime, timedelta
+from pathlib import Path
+from typing import Any
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from lib.auth import datadog_headers  # noqa: E402
+from lib.cli import base_parser, credential, parse_duration_days, parse_headers  # noqa: E402
+from lib.evidence import EvidenceWriter  # noqa: E402
+from lib.http import FetchResult, HttpClient  # noqa: E402
+from lib.summary import ExpectedFigure, Figure, SummaryWriter  # noqa: E402
+
+COLLECTOR = "datadog"
+VERSION = "2.0.0"
+
+DD_SITES: dict[str, str] = {
+    "us1": "datadoghq.com",
+    "us3": "us3.datadoghq.com",
+    "us5": "us5.datadoghq.com",
+    "eu1": "datadoghq.eu",
+    "ap1": "ap1.datadoghq.com",
+    "gov": "ddog-gov.com",
+}
+
+# Hourly-usage product families and the usage_type measurements we read.
+HOURLY_FAMILIES = ["infra_hosts", "logs", "ingested_spans", "indexed_spans", "rum", "timeseries"]
+
+EXPECTED = [
+    ExpectedFigure("hosts.count", "Active hosts", "hosts", "hosts"),
+    ExpectedFigure("metrics.total_count", "Active metric names", "metrics", "metrics"),
+    ExpectedFigure("metrics.custom_metrics_count", "Custom metrics (avg)", "metrics", "metrics"),
+    ExpectedFigure("logs.ingest_gb_per_day", "Log ingestion", "GB/day", "logs"),
+    ExpectedFigure(
+        "datadog.logs_indexed_events_per_day", "Indexed log events", "events/day", "logs"
+    ),
+    ExpectedFigure("traces.ingest_gb_per_day", "Trace ingestion", "GB/day", "traces"),
+    ExpectedFigure("datadog.rum_sessions_per_day", "RUM sessions", "sessions/day", "datadog"),
+    ExpectedFigure("alerts.monitor_count", "Monitors", "monitors", "alerts"),
+    ExpectedFigure("cost.monthly_usd", "Datadog estimated cost (month to date)", "USD", "cost"),
+]
+
+
+def resolve_site(site: str) -> str:
+    return DD_SITES.get(site, site)
+
+
+# ── collection ───────────────────────────────────────────────────────────
+
+
+def fetch_simple(
+    client: HttpClient, ev: EvidenceWriter, results: dict[str, Any]
+) -> dict[str, FetchResult]:
+    endpoints = {
+        "hosts_totals": "/api/v1/hosts/totals",
+        "dashboards": "/api/v1/dashboard",
+        "synthetics_tests": "/api/v1/synthetics/tests",
+        "notebooks": "/api/v1/notebooks",
+        "logs_pipelines": "/api/v1/logs/config/pipelines",
+        "logs_indexes": "/api/v1/logs/config/indexes",
+    }
+    fetches: dict[str, FetchResult] = {}
+    for name, path in endpoints.items():
+        print(f"collecting {name}")
+        res = client.get_json(path)
+        fetches[name] = res
+        if res.ok:
+            results[name] = res.data
+            ev.write(name, res.data, source_api=f"GET {path}")
+        else:
+            print(f"  WARN {name}: {res.error}")
+    return fetches
+
+
+def fetch_monitors(client: HttpClient, ev: EvidenceWriter, results: dict[str, Any]) -> FetchResult:
+    print("collecting monitors")
+    all_monitors: list[Any] = []
+    page, page_size = 0, 100
+    last: FetchResult | None = None
+    while True:
+        res = client.get_json(
+            "/api/v1/monitor", params={"page": str(page), "page_size": str(page_size)}
+        )
+        last = res
+        if not res.ok:
+            if page == 0:
+                return res
+            break
+        if not isinstance(res.data, list):
+            break
+        all_monitors.extend(res.data)
+        if len(res.data) < page_size:
+            break
+        page += 1
+    results["monitors"] = all_monitors
+    ev.write("monitors", all_monitors, source_api="GET /api/v1/monitor (paginated)")
+    return FetchResult(ok=True, data=all_monitors, status_code=last.status_code if last else None)
+
+
+def fetch_slos(client: HttpClient, ev: EvidenceWriter, results: dict[str, Any]) -> None:
+    print("collecting slos")
+    all_slos: list[Any] = []
+    offset, limit = 0, 1000
+    while True:
+        res = client.get_json("/api/v1/slo", params={"limit": str(limit), "offset": str(offset)})
+        if not res.ok:
+            if offset == 0:
+                print(f"  WARN slos: {res.error}")
+                return
+            break
+        slos = res.data.get("data", [])
+        all_slos.extend(slos)
+        total = res.data.get("metadata", {}).get("total_count")
+        if (total is not None and len(all_slos) >= total) or len(slos) < limit:
+            break
+        offset += limit
+    results["slos"] = {"data": all_slos}
+    ev.write("slos", results["slos"], source_api="GET /api/v1/slo (paginated)")
+
+
+def fetch_hourly_usage(
+    client: HttpClient,
+    family: str,
+    start_hr: str,
+    end_hr: str,
+    ev: EvidenceWriter,
+    results: dict[str, Any],
+) -> FetchResult:
+    """Fetch v2 hourly usage for a product family, following pagination.
+
+    The oodlectl version did not paginate; responses cap at 500 records, so a
+    30d window (720 hours) silently lost data. We follow
+    meta.pagination.next_record_id until exhausted.
+    """
+    name = f"usage_hourly_{family}"
+    print(f"collecting {name}")
+    records: list[Any] = []
+    next_id: str | None = None
+    first_error: FetchResult | None = None
+    for _ in range(50):  # hard page cap
+        params = {
+            "filter[product_families]": family,
+            "filter[timestamp][start]": start_hr,
+            "filter[timestamp][end]": end_hr,
+        }
+        if next_id:
+            params["page[next_record_id]"] = next_id
+        res = client.get_json("/api/v2/usage/hourly_usage", params=params)
+        if not res.ok:
+            first_error = res
+            break
+        records.extend(res.data.get("data", []))
+        next_id = (
+            res.data.get("meta", {}).get("pagination", {}).get("next_record_id")
+        )
+        if not next_id:
+            break
+    if not records and first_error is not None:
+        print(f"  WARN {name}: {first_error.error}")
+        return first_error
+    payload = {"data": records}
+    results[name] = payload
+    ev.write(name, payload, source_api="GET /api/v2/usage/hourly_usage (paginated)")
+    return FetchResult(ok=True, data=payload)
+
+
+def fetch_usage_summary(
+    client: HttpClient,
+    now: datetime,
+    lookback_days: float,
+    ev: EvidenceWriter,
+    results: dict[str, Any],
+) -> None:
+    start = now - timedelta(days=max(lookback_days, 28))
+    params = {"start_month": start.strftime("%Y-%m"), "end_month": now.strftime("%Y-%m")}
+    print("collecting usage_summary")
+    res = client.get_json("/api/v1/usage/summary", params=params)
+    if res.ok:
+        results["usage_summary"] = res.data
+        ev.write("usage_summary", res.data, source_api="GET /api/v1/usage/summary")
+    else:
+        print(f"  WARN usage_summary: {res.error}")
+
+
+def fetch_estimated_cost(
+    client: HttpClient, now: datetime, ev: EvidenceWriter, results: dict[str, Any]
+) -> FetchResult:
+    print("collecting estimated_cost")
+    res = client.get_json(
+        "/api/v2/usage/estimated_cost",
+        params={"view": "summary", "filter[start_month]": now.strftime("%Y-%m")},
+    )
+    if res.ok:
+        results["estimated_cost"] = res.data
+        ev.write("estimated_cost", res.data, source_api="GET /api/v2/usage/estimated_cost")
+    else:
+        print(f"  WARN estimated_cost: {res.error}")
+    return res
+
+
+def fetch_metrics_list(
+    client: HttpClient, now: datetime, ev: EvidenceWriter, results: dict[str, Any]
+) -> FetchResult:
+    print("collecting metrics_list")
+    from_ts = int((now - timedelta(hours=2)).timestamp())
+    res = client.get_json("/api/v1/metrics", params={"from": str(from_ts)})
+    if res.ok:
+        results["metrics_list"] = res.data
+        ev.write("metrics_list", res.data, source_api="GET /api/v1/metrics?from=<2h ago>")
+    return res
+
+
+# ── derivation (deterministic; every output figure is computed here) ────
+
+
+def hourly_values(data: dict | None, usage_type: str) -> list[tuple[str, float]]:
+    """(timestamp, value) pairs for one usage_type from a v2 hourly response."""
+    if not data:
+        return []
+    out: list[tuple[str, float]] = []
+    for entry in data.get("data", []):
+        attrs = entry.get("attributes", {})
+        ts = attrs.get("timestamp", "")
+        for m in attrs.get("measurements", []):
+            if m.get("usage_type") == usage_type and m.get("value") is not None:
+                out.append((ts, float(m["value"])))
+    return sorted(out)
+
+
+def window_of(values: list[tuple[str, float]]) -> dict[str, str] | None:
+    if not values:
+        return None
+    return {"start": values[0][0], "end": values[-1][0]}
+
+
+def covered_days(values: list[tuple[str, float]]) -> float:
+    """Days covered, counted from distinct hourly samples (robust to gaps)."""
+    return len({ts for ts, _ in values}) / 24.0
+
+
+def per_day(values: list[tuple[str, float]]) -> float | None:
+    days = covered_days(values)
+    if days <= 0:
+        return None
+    return sum(v for _, v in values) / days
+
+
+def avg(values: list[tuple[str, float]]) -> float | None:
+    if not values:
+        return None
+    return sum(v for _, v in values) / len(values)
+
+
+def add_hourly_figure(
+    summary: SummaryWriter,
+    results: dict[str, Any],
+    fetches: dict[str, FetchResult],
+    figure_id: str,
+    family: str,
+    usage_type: str,
+    transform: str,  # "per_day_gb" | "per_day" | "avg"
+    remediation: str | None = None,
+) -> None:
+    """Derive one figure from an hourly-usage family, or record the gap."""
+    exp = summary.expected[figure_id]
+    key = f"usage_hourly_{family}"
+    data = results.get(key)
+    values = hourly_values(data, usage_type)
+    if not values:
+        res = fetches.get(key)
+        reason = res.gap_reason if res is not None and res.gap_reason else "not_configured"
+        detail = (
+            res.error
+            if res is not None and res.error
+            else f"no '{usage_type}' measurements in {family} hourly usage "
+            f"(product likely not in use)"
+        )
+        summary.mark_unavailable(figure_id, reason, detail, remediation)
+        return
+    if transform == "per_day_gb":
+        value = per_day(values)
+        value = value / 1e9 if value is not None else None
+        method = f"sum of hourly '{usage_type}' / days covered, bytes -> GB (1e9)"
+    elif transform == "per_day":
+        value = per_day(values)
+        method = f"sum of hourly '{usage_type}' / days covered"
+    else:
+        value = avg(values)
+        method = f"average of hourly '{usage_type}' samples"
+    if value is None:
+        summary.mark_unavailable(figure_id, "not_configured", "empty hourly usage window")
+        return
+    summary.add_figure(
+        Figure(
+            id=figure_id,
+            label=exp.label,
+            value=round(value, 2),
+            unit=exp.unit,
+            status="ok",
+            method=method,
+            source_api="GET /api/v2/usage/hourly_usage"
+            f"?filter[product_families]={family}",
+            query=f"usage_type={usage_type}",
+            time_window=window_of(values),
+            evidence_files=[f"evidence/{key}.json"],
+        )
+    )
+
+
+def build_summary(
+    results: dict[str, Any],
+    fetches: dict[str, FetchResult],
+    summary: SummaryWriter,
+) -> None:
+    # hosts.count — real-time active hosts
+    hosts = results.get("hosts_totals")
+    if hosts and hosts.get("total_active") is not None:
+        summary.add_figure(
+            Figure(
+                id="hosts.count",
+                label="Active hosts",
+                value=float(hosts["total_active"]),
+                unit="hosts",
+                status="ok",
+                method="hosts/totals total_active (hosts seen in the last ~2h)",
+                source_api="GET /api/v1/hosts/totals",
+                evidence_files=["evidence/hosts_totals.json"],
+                notes=f"total_up={hosts.get('total_up')}",
+            )
+        )
+    else:
+        res = fetches.get("hosts_totals")
+        summary.mark_unavailable(
+            "hosts.count",
+            res.gap_reason if res and res.gap_reason else "api_error",
+            res.error if res and res.error else "hosts/totals returned no data",
+        )
+
+    # metrics.total_count — active metric names over the trailing 2h
+    metrics_list = results.get("metrics_list")
+    if metrics_list is not None and isinstance(metrics_list.get("metrics"), list):
+        summary.add_figure(
+            Figure(
+                id="metrics.total_count",
+                label="Active metric names",
+                value=float(len(metrics_list["metrics"])),
+                unit="metrics",
+                status="ok",
+                method="count of metric names actively reporting in the last 2h",
+                source_api="GET /api/v1/metrics?from=<2h ago>",
+                evidence_files=["evidence/metrics_list.json"],
+            )
+        )
+    else:
+        res = fetches.get("metrics_list")
+        summary.mark_unavailable(
+            "metrics.total_count",
+            res.gap_reason if res and res.gap_reason else "api_error",
+            res.error if res and res.error else "metrics list returned no data",
+        )
+
+    # Usage-derived figures (each records its own gap when missing)
+    add_hourly_figure(
+        summary, results, fetches,
+        "metrics.custom_metrics_count", "timeseries", "num_custom_timeseries", "avg",
+        remediation="custom metrics usage requires the timeseries product family; "
+        "verify the app key has usage_read",
+    )
+    add_hourly_figure(
+        summary, results, fetches,
+        "logs.ingest_gb_per_day", "logs", "ingested_events_bytes", "per_day_gb",
+    )
+    add_hourly_figure(
+        summary, results, fetches,
+        "datadog.logs_indexed_events_per_day", "logs", "indexed_events_count", "per_day",
+    )
+    add_hourly_figure(
+        summary, results, fetches,
+        "traces.ingest_gb_per_day", "ingested_spans", "ingested_events_bytes", "per_day_gb",
+    )
+    add_hourly_figure(
+        summary, results, fetches,
+        "datadog.rum_sessions_per_day", "rum", "rum_total_session_count", "per_day",
+    )
+
+    # alerts.monitor_count
+    monitors = results.get("monitors")
+    if isinstance(monitors, list):
+        summary.add_figure(
+            Figure(
+                id="alerts.monitor_count",
+                label="Monitors",
+                value=float(len(monitors)),
+                unit="monitors",
+                status="ok",
+                method="count of monitors across all pages",
+                source_api="GET /api/v1/monitor (paginated)",
+                evidence_files=["evidence/monitors.json"],
+            )
+        )
+        by_type: dict[str, int] = {}
+        for m in monitors:
+            by_type[m.get("type", "unknown")] = by_type.get(m.get("type", "unknown"), 0) + 1
+        summary.inventory["monitors_by_type"] = dict(
+            sorted(by_type.items(), key=lambda kv: -kv[1])
+        )
+    else:
+        res = fetches.get("monitors")
+        summary.mark_unavailable(
+            "alerts.monitor_count",
+            res.gap_reason if res and res.gap_reason else "api_error",
+            res.error if res and res.error else "monitor list unavailable",
+        )
+
+    # cost.monthly_usd — Datadog's own estimated cost (month to date)
+    cost = results.get("estimated_cost")
+    cost_value: float | None = None
+    if cost:
+        for entry in cost.get("data", []):
+            attrs = entry.get("attributes", {})
+            if attrs.get("total_cost") is not None:
+                cost_value = float(attrs["total_cost"])
+                break
+    if cost_value is not None:
+        summary.add_figure(
+            Figure(
+                id="cost.monthly_usd",
+                label="Datadog estimated cost (month to date)",
+                value=round(cost_value, 2),
+                unit="USD",
+                status="ok",
+                method="Datadog estimated_cost API, current month summary view "
+                "(same source as the Usage & Cost page)",
+                source_api="GET /api/v2/usage/estimated_cost?view=summary",
+                evidence_files=["evidence/estimated_cost.json"],
+            )
+        )
+    else:
+        res = fetches.get("estimated_cost")
+        summary.mark_unavailable(
+            "cost.monthly_usd",
+            res.gap_reason if res and res.gap_reason else "api_error",
+            res.error if res and res.error else "estimated cost not present in response",
+            remediation="estimated_cost requires billing_read / usage_read permission "
+            "on the application key",
+        )
+
+    # Inventory (non-numeric facts for the deep-dive section)
+    inv = summary.inventory
+    dash = results.get("dashboards") or {}
+    inv["dashboards_count"] = len(dash.get("dashboards", []))
+    notebooks = results.get("notebooks") or {}
+    inv["notebooks_count"] = len(notebooks.get("data", []))
+    slos = results.get("slos") or {}
+    inv["slo_count"] = len(slos.get("data", []))
+    synth = results.get("synthetics_tests") or {}
+    tests = synth.get("tests", [])
+    inv["synthetics"] = {
+        "total": len(tests),
+        "api": sum(1 for t in tests if t.get("type") == "api"),
+        "browser": sum(1 for t in tests if t.get("type") == "browser"),
+    }
+    pipelines = results.get("logs_pipelines")
+    if isinstance(pipelines, list):
+        inv["log_pipelines_count"] = len(pipelines)
+    indexes = results.get("logs_indexes") or {}
+    inv["log_indexes"] = [
+        {
+            "name": ix.get("name"),
+            "retention_days": ix.get("num_retention_days"),
+            "daily_limit": ix.get("daily_limit"),
+        }
+        for ix in indexes.get("indexes", [])
+    ]
+    infra_values = hourly_values(results.get("usage_hourly_infra_hosts"), "host_count")
+    if infra_values:
+        inv["billable_infra_hosts_avg"] = round(avg(infra_values) or 0, 1)
+        inv["billable_infra_hosts_max"] = max(v for _, v in infra_values)
+
+
+# ── main ─────────────────────────────────────────────────────────────────
+
+
+def main() -> int:
+    parser = base_parser("Datadog discovery collector", default_lookback="30d")
+    parser.add_argument("--api-key", help="Datadog API key (or env DD_API_KEY)")
+    parser.add_argument("--app-key", help="Datadog application key (or env DD_APP_KEY)")
+    parser.add_argument(
+        "--site",
+        default="us1",
+        help=f"Datadog site: {', '.join(DD_SITES)} or a full domain",
+    )
+    args = parser.parse_args()
+
+    args.output_dir.mkdir(parents=True, exist_ok=True)
+    ev = EvidenceWriter(args.output_dir)
+    results: dict[str, Any] = {}
+    fetches: dict[str, FetchResult] = {}
+    domain = resolve_site(args.site)
+
+    if args.report_only:
+        results = ev.load_all()
+        if not results:
+            print(f"ERROR: --report-only but no evidence under {ev.evidence_dir}")
+            return 2
+    else:
+        api_key = credential(args.api_key, "DD_API_KEY", "Datadog API key")
+        app_key = credential(args.app_key, "DD_APP_KEY", "Datadog application key")
+        if not api_key or not app_key:
+            print(
+                "ERROR: missing credentials. Pass --api-key/--app-key or set "
+                "DD_API_KEY / DD_APP_KEY.\n"
+                "Keys: https://app.datadoghq.com/organization-settings/api-keys"
+            )
+            return 2
+        headers = datadog_headers(api_key, app_key)
+        headers.update(parse_headers(args.header))
+        now = datetime.now(UTC)
+        lookback_days = parse_duration_days(args.lookback)
+        start_hr = (now - timedelta(days=lookback_days)).strftime("%Y-%m-%dT%H:00:00+00:00")
+        end_hr = now.strftime("%Y-%m-%dT%H:00:00+00:00")
+        with HttpClient(
+            f"https://api.{domain}",
+            headers=headers,
+            timeout_s=args.timeout,
+            verify=not args.insecure,
+        ) as client:
+            fetches.update(fetch_simple(client, ev, results))
+            fetches["monitors"] = fetch_monitors(client, ev, results)
+            fetch_slos(client, ev, results)
+            fetch_usage_summary(client, now, lookback_days, ev, results)
+            for family in HOURLY_FAMILIES:
+                fetches[f"usage_hourly_{family}"] = fetch_hourly_usage(
+                    client, family, start_hr, end_hr, ev, results
+                )
+            fetches["estimated_cost"] = fetch_estimated_cost(client, now, ev, results)
+            fetches["metrics_list"] = fetch_metrics_list(client, now, ev, results)
+
+    summary = SummaryWriter(
+        collector=COLLECTOR,
+        collector_version=VERSION,
+        expected=EXPECTED,
+        target=f"https://api.{domain}",
+        lookback=args.lookback,
+        args_redacted={"site": args.site, "lookback": args.lookback},
+    )
+    summary.environment = {
+        "detected_backend": "datadog",
+        "version": None,
+        "detection_method": "site flag / API reachability",
+        "site": domain,
+    }
+    build_summary(results, fetches, summary)
+    summary.write(args.output_dir)
+    ev.finalize()
+    if args.tar:
+        ev.tar()
+
+    unavailable = [f for f in summary.to_dict()["figures"] if f["status"] == "unavailable"]
+    print(
+        f"done: {len(EXPECTED) - len(unavailable)}/{len(EXPECTED)} expected figures collected; "
+        f"{len(unavailable)} gap(s)"
+    )
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

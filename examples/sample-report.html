@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Infrastructure & Observability Discovery Report</title>
+<title>Infrastructure &amp; Observability Discovery Report</title>
 <style>
   :root {
     --primary: #1a1a2e;
@@ -15,6 +15,7 @@
     --border: #e2e8f0;
     --success: #10b981;
     --warning: #f59e0b;
+    --danger: #ef4444;
   }
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body {
@@ -23,12 +24,7 @@
     color: var(--text);
     line-height: 1.6;
   }
-  .header {
-    background: var(--primary);
-    color: white;
-    padding: 3rem 2rem;
-    text-align: center;
-  }
+  .header { background: var(--primary); color: white; padding: 3rem 2rem; text-align: center; }
   .header h1 { font-size: 2rem; margin-bottom: 0.5rem; }
   .header p { color: #94a3b8; font-size: 1.1rem; }
   .container { max-width: 1100px; margin: 0 auto; padding: 2rem; }
@@ -39,62 +35,29 @@
     margin: 2rem 0;
   }
   .summary-card {
-    background: var(--card);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    padding: 1.25rem;
-    text-align: center;
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 12px; padding: 1.25rem; text-align: center;
   }
-  .summary-card .value {
-    font-size: 1.75rem;
-    font-weight: 700;
-    color: var(--accent);
-  }
-  .summary-card .label {
-    color: var(--text-muted);
-    font-size: 0.8rem;
-    margin-top: 0.25rem;
-  }
+  .summary-card .value { font-size: 1.75rem; font-weight: 700; color: var(--accent); }
+  .summary-card .label { color: var(--text-muted); font-size: 0.8rem; margin-top: 0.25rem; }
   .section {
-    background: var(--card);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    padding: 1.75rem;
-    margin: 1.25rem 0;
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 12px; padding: 1.75rem; margin: 1.25rem 0;
   }
   .section h2 {
-    font-size: 1.3rem;
-    margin-bottom: 0.75rem;
-    color: var(--primary);
-    border-bottom: 2px solid var(--accent);
-    padding-bottom: 0.5rem;
+    font-size: 1.3rem; margin-bottom: 0.75rem; color: var(--primary);
+    border-bottom: 2px solid var(--accent); padding-bottom: 0.5rem;
   }
-  table {
-    width: 100%;
-    border-collapse: collapse;
-    margin: 0.75rem 0;
-    font-size: 0.9rem;
-  }
-  th, td {
-    padding: 0.6rem 0.75rem;
-    text-align: left;
-    border-bottom: 1px solid var(--border);
-  }
+  .section h3 { font-size: 1.05rem; margin: 1rem 0 0.5rem; color: var(--primary); }
+  table { width: 100%; border-collapse: collapse; margin: 0.75rem 0; font-size: 0.9rem; }
+  th, td { padding: 0.6rem 0.75rem; text-align: left; border-bottom: 1px solid var(--border); }
   th {
-    background: var(--bg);
-    font-weight: 600;
-    color: var(--text-muted);
-    text-transform: uppercase;
-    font-size: 0.75rem;
-    letter-spacing: 0.05em;
+    background: var(--bg); font-weight: 600; color: var(--text-muted);
+    text-transform: uppercase; font-size: 0.75rem; letter-spacing: 0.05em;
   }
   .tag {
-    display: inline-block;
-    padding: 0.2rem 0.6rem;
-    border-radius: 9999px;
-    font-size: 0.75rem;
-    font-weight: 500;
-    margin: 0.125rem;
+    display: inline-block; padding: 0.2rem 0.6rem; border-radius: 9999px;
+    font-size: 0.75rem; font-weight: 500; margin: 0.125rem;
   }
   .tag-blue { background: #dbeafe; color: #1d4ed8; }
   .tag-green { background: #d1fae5; color: #065f46; }
@@ -103,266 +66,147 @@
   .tag-red { background: #fee2e2; color: #991b1b; }
   .tag-gray { background: #f1f5f9; color: #475569; }
   .pain-point {
-    border-left: 4px solid var(--warning);
-    padding: 0.75rem 1.25rem;
-    margin: 0.5rem 0;
-    background: #fffbeb;
-    border-radius: 0 8px 8px 0;
+    border-left: 4px solid var(--warning); padding: 0.75rem 1.25rem;
+    margin: 0.5rem 0; background: #fffbeb; border-radius: 0 8px 8px 0;
   }
   .recommendation {
-    border-left: 4px solid var(--success);
-    padding: 0.75rem 1.25rem;
-    margin: 0.5rem 0;
-    background: #ecfdf5;
-    border-radius: 0 8px 8px 0;
+    border-left: 4px solid var(--success); padding: 0.75rem 1.25rem;
+    margin: 0.5rem 0; background: #ecfdf5; border-radius: 0 8px 8px 0;
   }
   .env-badge {
-    display: inline-block;
-    padding: 0.2rem 0.6rem;
-    border-radius: 4px;
-    font-size: 0.75rem;
-    font-weight: 600;
-    text-transform: uppercase;
+    display: inline-block; padding: 0.2rem 0.6rem; border-radius: 4px;
+    font-size: 0.75rem; font-weight: 600; text-transform: uppercase;
   }
   .env-prod { background: #fee2e2; color: #991b1b; }
   .env-staging { background: #fef3c7; color: #92400e; }
   .env-dev { background: #d1fae5; color: #065f46; }
-  .footer {
-    text-align: center;
-    padding: 2rem;
-    color: var(--text-muted);
-    font-size: 0.85rem;
-  }
-  .footer a { color: var(--accent); text-decoration: none; }
+  .env-other { background: #f1f5f9; color: #475569; }
+  .footer { text-align: center; padding: 2rem; color: var(--text-muted); font-size: 0.85rem; }
   ul { padding-left: 1.5rem; margin: 0.5rem 0; }
   li { margin: 0.25rem 0; }
-  .sample-banner {
-    background: #fef3c7;
-    border: 1px solid #f59e0b;
-    color: #92400e;
-    text-align: center;
-    padding: 0.75rem;
-    font-size: 0.85rem;
-    font-weight: 500;
+
+  /* status + provenance */
+  .status-badge {
+    display: inline-block; padding: 0.1rem 0.5rem; border-radius: 4px;
+    font-size: 0.7rem; font-weight: 600; text-transform: uppercase;
   }
+  .status-ok { background: #d1fae5; color: #065f46; }
+  .status-estimated { background: #fef3c7; color: #92400e; }
+  .status-partial { background: #ffedd5; color: #9a3412; }
+  .status-unavailable { background: #fee2e2; color: #991b1b; }
+  .status-reported { background: #f1f5f9; color: #475569; }
+  .narrative {
+    border-left: 4px solid var(--accent); padding: 0.75rem 1.25rem;
+    margin: 0.5rem 0; background: #eef2ff; border-radius: 0 8px 8px 0;
+    font-size: 0.95rem;
+  }
+  details.deep-dive {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 12px; margin: 1rem 0; padding: 0;
+  }
+  details.deep-dive > summary {
+    cursor: pointer; padding: 1rem 1.5rem; font-weight: 600;
+    color: var(--primary); font-size: 1.05rem; list-style-position: inside;
+  }
+  details.deep-dive > .deep-dive-body { padding: 0 1.75rem 1.5rem; }
+  .provenance { font-size: 0.8rem; }
+  .provenance td { font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+                   font-size: 0.75rem; }
+  .muted { color: var(--text-muted); font-size: 0.85rem; }
+  code { background: #f1f5f9; padding: 0.1rem 0.3rem; border-radius: 4px;
+         font-size: 0.85em; word-break: break-all; }
 </style>
 </head>
 <body>
-<div class="sample-banner">
-  SAMPLE REPORT — This is a demonstration with fictional data. Your report will reflect your actual environment.
-</div>
 <div class="header">
-  <h1>Infrastructure & Observability Discovery Report</h1>
-  <p>Generated on 2025-01-15 for Acme Corp</p>
+  <h1>Infrastructure &amp; Observability Discovery Report</h1>
+  <p>Generated on 2026-01-01 for Acme Corp (fictional sample)</p>
 </div>
 <div class="container">
-
-  <!-- Executive Summary -->
-  <div class="summary-grid">
-    <div class="summary-card">
-      <div class="value">3</div>
-      <div class="label">Environments</div>
-    </div>
-    <div class="summary-card">
-      <div class="value">47</div>
-      <div class="label">Services</div>
-    </div>
-    <div class="summary-card">
-      <div class="value">38 nodes</div>
-      <div class="label">Compute (total)</div>
-    </div>
-    <div class="summary-card">
-      <div class="value">~120K/sec</div>
-      <div class="label">Metrics Ingestion</div>
-    </div>
-    <div class="summary-card">
-      <div class="value">~280 GB/day</div>
-      <div class="label">Log Volume</div>
-    </div>
-    <div class="summary-card">
-      <div class="value">~45K/sec</div>
-      <div class="label">Trace Spans</div>
-    </div>
-    <div class="summary-card">
-      <div class="value">$82K/mo</div>
-      <div class="label">Est. Cloud Spend</div>
-    </div>
-    <div class="summary-card">
-      <div class="value">12</div>
-      <div class="label">Team Size</div>
-    </div>
-  </div>
-
-  <!-- Environments -->
-  <div class="section">
-    <h2>Environments</h2>
-    <table>
-      <thead>
-        <tr><th>Environment</th><th>Cloud / Region</th><th>Cluster</th><th>Nodes</th><th>Services</th></tr>
-      </thead>
-      <tbody>
-        <tr>
-          <td><span class="env-badge env-prod">PROD</span></td>
-          <td>AWS us-east-1</td>
-          <td>acme-prod-eks</td>
-          <td>24</td>
-          <td>47</td>
-        </tr>
-        <tr>
-          <td><span class="env-badge env-staging">STAGING</span></td>
-          <td>AWS us-east-1</td>
-          <td>acme-staging-eks</td>
-          <td>8</td>
-          <td>47</td>
-        </tr>
-        <tr>
-          <td><span class="env-badge env-dev">DEV</span></td>
-          <td>AWS us-west-2</td>
-          <td>acme-dev-eks</td>
-          <td>6</td>
-          <td>32</td>
-        </tr>
-      </tbody>
-    </table>
-  </div>
-
-  <!-- Tech Stack -->
-  <div class="section">
-    <h2>Tech Stack</h2>
-    <p><strong>Languages:</strong>
-      <span class="tag tag-blue">Go</span>
-      <span class="tag tag-blue">TypeScript</span>
-      <span class="tag tag-blue">Python</span>
-      <span class="tag tag-blue">Java</span>
-    </p>
-    <p style="margin-top: 0.5rem;"><strong>Databases:</strong>
-      <span class="tag tag-green">PostgreSQL (RDS)</span>
-      <span class="tag tag-green">Redis (ElastiCache)</span>
-      <span class="tag tag-green">DynamoDB</span>
-      <span class="tag tag-green">MongoDB Atlas</span>
-    </p>
-    <p style="margin-top: 0.5rem;"><strong>Infra & IaC:</strong>
-      <span class="tag tag-purple">Terraform</span>
-      <span class="tag tag-purple">Helm</span>
-      <span class="tag tag-purple">ArgoCD</span>
-      <span class="tag tag-purple">GitHub Actions</span>
-    </p>
-    <p style="margin-top: 0.5rem;"><strong>Messaging:</strong>
-      <span class="tag tag-orange">Kafka (MSK)</span>
-      <span class="tag tag-orange">SQS</span>
-      <span class="tag tag-orange">RabbitMQ</span>
-    </p>
-  </div>
-
-  <!-- Observability Stack -->
-  <div class="section">
-    <h2>Observability Stack</h2>
-    <table>
-      <thead>
-        <tr><th>Signal</th><th>Tools</th><th>Scale (7-day avg)</th></tr>
-      </thead>
-      <tbody>
-        <tr>
-          <td><strong>Metrics</strong></td>
-          <td>Prometheus + Thanos, Grafana</td>
-          <td>~120K samples/sec, ~2.4M active series</td>
-        </tr>
-        <tr>
-          <td><strong>Logs</strong></td>
-          <td>Vector &rarr; Loki, Grafana</td>
-          <td>~280 GB/day</td>
-        </tr>
-        <tr>
-          <td><strong>Traces</strong></td>
-          <td>OTel Collector &rarr; Tempo, Grafana</td>
-          <td>~45K spans/sec (~95 GB/day)</td>
-        </tr>
-        <tr>
-          <td><strong>Alerting</strong></td>
-          <td>Alertmanager &rarr; PagerDuty, Slack</td>
-          <td>342 alert rules, ~18 firing/day</td>
-        </tr>
-      </tbody>
-    </table>
-    <p style="margin-top: 0.75rem; font-size: 0.85rem; color: var(--text-muted);">
-      Observability storage: ~4.2 TB total (Thanos S3: 2.1 TB, Loki S3: 1.6 TB, Tempo S3: 520 GB). Retention: metrics 90d / logs 30d / traces 14d.
-    </p>
-  </div>
-
-  <!-- Scale at a Glance -->
-  <div class="section">
-    <h2>Scale at a Glance</h2>
-    <table>
-      <thead>
-        <tr><th>Metric</th><th>Dev</th><th>Staging</th><th>Prod</th></tr>
-      </thead>
-      <tbody>
-        <tr><td>Nodes</td><td>6</td><td>8</td><td>24</td></tr>
-        <tr><td>Total vCPU</td><td>48</td><td>64</td><td>192</td></tr>
-        <tr><td>Total Memory</td><td>96 GB</td><td>128 GB</td><td>384 GB</td></tr>
-        <tr><td>Pods / Services</td><td>85 / 32</td><td>142 / 47</td><td>310 / 47</td></tr>
-        <tr><td>Avg CPU Util</td><td>22%</td><td>35%</td><td>61%</td></tr>
-        <tr><td>Persistent Storage</td><td>200 GB</td><td>500 GB</td><td>2.4 TB</td></tr>
-      </tbody>
-    </table>
-  </div>
-
-  <!-- Costs -->
-  <div class="section">
-    <h2>Costs (estimated monthly)</h2>
-    <table>
-      <thead>
-        <tr><th>Category</th><th>Estimated Spend</th><th>Notes</th></tr>
-      </thead>
-      <tbody>
-        <tr><td>Compute (EKS/EC2)</td><td>$38,000</td><td>m5.2xlarge, c5.4xlarge across 3 envs</td></tr>
-        <tr><td>Storage (S3/EBS/PV)</td><td>$12,000</td><td>~8 TB total across S3 + EBS</td></tr>
-        <tr><td>Observability Tools</td><td>$18,000</td><td>Grafana Cloud (logs tier), PagerDuty</td></tr>
-        <tr><td>Managed Databases</td><td>$14,000</td><td>RDS, ElastiCache, MongoDB Atlas</td></tr>
-        <tr><td><strong>Total</strong></td><td><strong>$82,000</strong></td><td></td></tr>
-      </tbody>
-    </table>
-  </div>
-
-  <!-- Observability Pain Points -->
-  <div class="section">
-    <h2>Observability Pain Points</h2>
-    <div class="pain-point">
-      <strong>Alert fatigue</strong>
-      <p>~18 alerts fire daily, but team estimates only 30% are actionable. Noisy disk and CPU threshold alerts dominate.</p>
-    </div>
-    <div class="recommendation">
-      <strong>Recommendation:</strong> Consolidate threshold alerts into SLO-based alerts. Reduce noise by 60-70% while improving signal quality.
-    </div>
-
-    <div class="pain-point">
-      <strong>Log volume cost growing 40% QoQ</strong>
-      <p>280 GB/day logs with 30-day retention. Debug-level logs from 3 services account for ~45% of volume but are rarely queried.</p>
-    </div>
-    <div class="recommendation">
-      <strong>Recommendation:</strong> Drop or downsample debug logs from high-volume services at the Vector pipeline level. Estimated savings: ~$5K/mo.
-    </div>
-
-    <div class="pain-point">
-      <strong>No correlation between metrics, logs, and traces</strong>
-      <p>Team switches between Grafana, Loki, and Tempo manually during incidents. No trace-to-logs or metrics-to-traces linking configured.</p>
-    </div>
-    <div class="recommendation">
-      <strong>Recommendation:</strong> Enable exemplars in Prometheus and configure Grafana data source correlations for one-click drill-down between signals.
-    </div>
-
-    <div class="pain-point">
-      <strong>5 services have no tracing instrumentation</strong>
-      <p>Legacy Java services (payment-gateway, invoice-service, auth-proxy, notification-worker, report-generator) emit no trace data.</p>
-    </div>
-    <div class="recommendation">
-      <strong>Recommendation:</strong> Use OTel Java auto-instrumentation agent for zero-code trace coverage on these services.
-    </div>
-  </div>
-
+<div class="summary-grid"><div class="summary-card" title="reported by agent/user — not collector-verified"><div class="value">2</div><div class="label">Environments</div></div>
+<div class="summary-card" title="reported by agent/user — not collector-verified"><div class="value">59</div><div class="label">Services</div></div>
+<div class="summary-card" title="reported by agent/user — not collector-verified"><div class="value">30</div><div class="label">Compute Nodes</div></div>
+<div class="summary-card" title="datadog: 18.2K metrics (ok)"><div class="value">18.2K metrics</div><div class="label">Custom Metrics</div></div>
+<div class="summary-card" title="datadog: 231.4 GB/day (ok)"><div class="value">231.4 GB/day</div><div class="label">Log Volume</div></div>
+<div class="summary-card" title="no measured figure; see Coverage &amp; Gaps"><div class="value">—</div><div class="label">Trace Volume</div></div>
+<div class="summary-card" title="datadog: $41.2K (ok)"><div class="value">$41.2K</div><div class="label">Est. Observability Spend</div></div>
+<div class="summary-card" title="reported by agent/user — not collector-verified"><div class="value">8 engineers</div><div class="label">Team Size</div></div></div>
+<div class="narrative">Two AWS EKS environments, all-in on Datadog for metrics/logs/alerting.</div>
+<div class="section"><h2>Environments</h2>
+<table><thead><tr><th>Environment</th><th>Cloud</th><th>Region</th><th>Cluster</th><th>Nodes</th><th>Services</th></tr></thead><tbody>
+<tr><td><strong>production</strong> <span class="env-badge env-prod">prod</span></td><td>aws</td><td>us-east-1</td><td>prod-eks</td><td>24</td><td>31</td></tr>
+<tr><td><strong>staging</strong> <span class="env-badge env-staging">staging</span></td><td>aws</td><td>us-east-1</td><td>stg-eks</td><td>6</td><td>28</td></tr>
+</tbody></table><p class="muted">Reported by discovery agent from kubectl/cloud CLI inventory.</p>
+</div>
+<div class="section"><h2>Tech Stack</h2>
+<p><strong>Languages:</strong> <span class="tag tag-blue">Go</span> <span class="tag tag-blue">Python</span></p>
+<p><strong>Databases:</strong> <span class="tag tag-green">PostgreSQL</span> <span class="tag tag-green">Redis</span></p>
+<p><strong>Infra / IaC:</strong> <span class="tag tag-purple">Terraform</span> <span class="tag tag-purple">Helm</span></p>
+<p><strong>Messaging:</strong> <span class="tag tag-orange">Kafka</span></p>
+</div>
+<div class="section"><h2>Observability Stack &amp; Scale</h2>
+<table><thead><tr><th>Signal</th><th>Tools</th><th>Measured Scale (hover for source)</th></tr></thead><tbody>
+<tr><td>Metrics</td><td><span class="tag tag-blue">Datadog</span></td><td><span title="datadog: 18.2K metrics (ok)">18.2K custom metrics</span> <span class="status-badge status-ok">ok</span></td></tr>
+<tr><td>Logs</td><td><span class="tag tag-blue">Datadog Logs</span></td><td><span title="datadog: 231.4 GB/day (ok)">231.40 GB/day ingested</span> <span class="status-badge status-ok">ok</span></td></tr>
+<tr><td>Alerting</td><td><span class="tag tag-blue">Datadog Monitors</span> <span class="tag tag-blue">PagerDuty</span></td><td><span title="datadog: 312 monitors (ok)">312 monitors</span> <span class="status-badge status-ok">ok</span></td></tr>
+</tbody></table>
+</div>
+<div class="section"><h2>Observability Spend (Estimated Monthly)</h2>
+<table><thead><tr><th>Source</th><th>Monthly Spend</th><th>Status</th><th>Method</th></tr></thead><tbody>
+<tr><td>datadog</td><td>$41.2K/mo</td><td><span class="status-badge status-ok">ok</span></td><td>estimated_cost API, month to date</td></tr>
+<tr><td>Datadog contract</td><td>$480K/yr committed</td><td><span class="status-badge status-reported">reported</span></td><td>stated by user; not verified</td></tr>
+</tbody></table><p><strong>Measured total: $41.2K/mo</strong> <span class="muted">(observability spend only; user-reported rows not included)</span></p>
+</div>
+<div class="section"><h2>Observability Pain Points</h2>
+<div class="pain-point"><strong>Alert fatigue</strong><br>300+ monitors, many flapping nightly.</div>
+<div class="recommendation">Audit monitor thresholds; consolidate composites.</div>
+</div>
+<div class="section" id="coverage"><h2>Coverage &amp; Gaps</h2>
+<table><thead><tr><th>Collector</th><th>Figures collected</th><th>Target</th><th>Lookback</th></tr></thead><tbody>
+<tr><td>datadog</td><td>5/6</td><td>https://api.us5.datadoghq.com</td><td>30d</td></tr>
+</tbody></table>
+<h3>Gaps</h3>
+<table><thead><tr><th>Collector</th><th>Area</th><th>Figures</th><th>Reason</th><th>Detail</th><th>Remediation</th></tr></thead><tbody>
+<tr><td>datadog</td><td>traces</td><td><code>traces.ingest_gb_per_day</code></td><td><span class="tag tag-red">permission_denied</span></td><td>app key lacks usage_read for ingested_spans</td><td>grant usage_read to the application key</td></tr>
+<tr><td>cloudwatch</td><td>all</td><td>—</td><td><span class="tag tag-red">not_run</span></td><td>aws CLI not configured on this machine</td><td>—</td></tr>
+</tbody></table>
+</div>
+<h2 style='margin:2rem 0 0.5rem'>Deep Dives</h2>
+<details class="deep-dive"><summary>datadog — collected details</summary><div class="deep-dive-body"><p class="muted">Detected: detected_backend=datadog, site=us5.datadoghq.com</p>
+<table><thead><tr><th>Figure</th><th>Value</th><th>Status</th><th>Method / Reason</th><th>Window</th></tr></thead><tbody>
+<tr><td>Active hosts</td><td>142 hosts</td><td><span class="status-badge status-ok">ok</span></td><td>hosts/totals total_active</td><td>—</td></tr>
+<tr><td>Log ingestion</td><td>231.4 GB/day</td><td><span class="status-badge status-ok">ok</span></td><td>sum of hourly ingested_events_bytes / days</td><td>2026-05-13T10:00:00Z → 2026-06-12T10:00:00Z</td></tr>
+<tr><td>Custom metrics (avg)</td><td>18.2K metrics</td><td><span class="status-badge status-ok">ok</span></td><td>avg hourly num_custom_timeseries</td><td>2026-05-13T10:00:00Z → 2026-06-12T10:00:00Z</td></tr>
+<tr><td>Datadog estimated cost</td><td>$41.2K</td><td><span class="status-badge status-ok">ok</span></td><td>estimated_cost API, month to date</td><td>—</td></tr>
+<tr><td>Monitors</td><td>312 monitors</td><td><span class="status-badge status-ok">ok</span></td><td>count across pages</td><td>—</td></tr>
+<tr><td>Trace ingestion</td><td>—</td><td><span class="status-badge status-unavailable">unavailable</span></td><td>permission_denied: app key lacks usage_read for ingested_spans</td><td>—</td></tr>
+</tbody></table>
+<table><thead><tr><th>Fact</th><th>Value</th></tr></thead><tbody>
+<tr><td>Dashboards count</td><td>87</td></tr>
+</tbody></table>
+<h3>Log indexes</h3>
+<table><thead><tr><th>name</th><th>retention days</th><th>daily limit</th></tr></thead><tbody>
+<tr><td>main</td><td>15</td><td>—</td></tr>
+</tbody></table>
+<h3>Monitors by type</h3>
+<table><thead><tr><th>Key</th><th>Value</th></tr></thead><tbody>
+<tr><td>metric alert</td><td>200</td></tr>
+<tr><td>log alert</td><td>80</td></tr>
+<tr><td>composite</td><td>32</td></tr>
+</tbody></table></div></details>
+<div class="section"><h2>Provenance Appendix</h2>
+<p class="muted">Every measured figure below can be re-derived from the raw API response captured in the listed evidence file (under each collector's output directory).</p><table class="provenance"><thead><tr><th>Figure</th><th>Collector</th><th>Source API</th><th>Query</th><th>Evidence</th></tr></thead><tbody>
+<tr><td><code>hosts.count</code></td><td>datadog</td><td>GET /api/v1/hosts/totals</td><td>—</td><td><code>evidence/hosts_totals.json</code></td></tr>
+<tr><td><code>logs.ingest_gb_per_day</code></td><td>datadog</td><td>GET /api/v2/usage/hourly_usage?filter[product_families]=logs</td><td>usage_type=ingested_events_bytes</td><td><code>evidence/usage_hourly_logs.json</code></td></tr>
+<tr><td><code>metrics.custom_metrics_count</code></td><td>datadog</td><td>GET /api/v2/usage/hourly_usage?filter[product_families]=timeseries</td><td>usage_type=num_custom_timeseries</td><td><code>evidence/usage_hourly_timeseries.json</code></td></tr>
+<tr><td><code>cost.monthly_usd</code></td><td>datadog</td><td>GET /api/v2/usage/estimated_cost?view=summary</td><td>—</td><td><code>evidence/estimated_cost.json</code></td></tr>
+<tr><td><code>alerts.monitor_count</code></td><td>datadog</td><td>GET /api/v1/monitor</td><td>—</td><td><code>evidence/monitors.json</code></td></tr>
+</tbody></table>
+</div>
 </div>
 <div class="footer">
-  <p>Generated by <a href="https://oodle.ai">Oodle</a> Discovery Agent</p>
+  Generated by the Oodle discovery skill. Every measured figure links to raw API evidence
+  (see Provenance). Items marked "reported" were stated by the user and are not verified.
 </div>
 </body>
 </html>
