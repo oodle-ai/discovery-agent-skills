@@ -5,17 +5,17 @@
   "run": {
     "started_at": "2026-06-12T10:00:00Z",
     "finished_at": "2026-06-12T10:02:00Z",
-    "target": "https://api.us5.datadoghq.com",
+    "target": "https://api.datadoghq.com",
     "lookback": "30d",
     "args_redacted": {
-      "site": "us5"
+      "site": "us1"
     }
   },
   "environment": {
     "detected_backend": "datadog",
     "version": null,
     "detection_method": "site flag",
-    "site": "us5.datadoghq.com"
+    "site": "datadoghq.com"
   },
   "figures": [
     {
