@@ -20,12 +20,18 @@ def mock_datadog(respx_mock, estimated_cost_status=200, hourly_pages=1):
     respx_mock.get(f"{BASE}/api/v1/slo").respond(json=fx.SLOS)
     respx_mock.get(f"{BASE}/api/v1/usage/summary").respond(json=fx.USAGE_SUMMARY)
     respx_mock.get(f"{BASE}/api/v1/metrics").respond(json=fx.METRICS_LIST)
-    if estimated_cost_status == 200:
-        respx_mock.get(f"{BASE}/api/v2/usage/estimated_cost").respond(json=fx.ESTIMATED_COST)
-    else:
-        respx_mock.get(f"{BASE}/api/v2/usage/estimated_cost").respond(
-            status_code=estimated_cost_status, json={"errors": ["Forbidden"]}
-        )
+    def estimated_cost_side_effect(request: httpx.Request) -> httpx.Response:
+        # the API rejects filter[start_month]; require the bare param
+        if "start_month" not in request.url.params:
+            detail = "Must provide exactly one of start_month or start_date"
+            return httpx.Response(400, json={"errors": [{"detail": detail}]})
+        if estimated_cost_status != 200:
+            return httpx.Response(estimated_cost_status, json={"errors": ["Forbidden"]})
+        return httpx.Response(200, json=fx.ESTIMATED_COST)
+
+    respx_mock.get(f"{BASE}/api/v2/usage/estimated_cost").mock(
+        side_effect=estimated_cost_side_effect
+    )
 
     def hourly_side_effect(request: httpx.Request) -> httpx.Response:
         family = request.url.params.get("filter[product_families]")

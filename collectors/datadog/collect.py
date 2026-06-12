@@ -209,7 +209,7 @@ def fetch_estimated_cost(
     print("collecting estimated_cost")
     res = client.get_json(
         "/api/v2/usage/estimated_cost",
-        params={"view": "summary", "filter[start_month]": now.strftime("%Y-%m")},
+        params={"view": "summary", "start_month": now.strftime("%Y-%m")},
     )
     if res.ok:
         results["estimated_cost"] = res.data
