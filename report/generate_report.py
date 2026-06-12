@@ -133,10 +133,6 @@ def exec_cards(figures: dict, ctx: dict) -> str:
         tip = "reported by agent/user — not collector-verified" if v is not None else None
         return T.card(f"{v}{suffix}" if v is not None else "—", label, tooltip=tip)
 
-    cards.append(reported(len(envs) or None, "Environments"))
-    cards.append(reported(inv.get("total_services"), "Services"))
-    cards.append(reported(inv.get("total_nodes"), "Compute Nodes"))
-
     def measured(figure_id: str, label: str, unit_hint: str) -> str:
         agg = aggregate(figures, figure_id)
         if agg is None:
@@ -145,6 +141,33 @@ def exec_cards(figures: dict, ctx: dict) -> str:
             T.format_value(agg.value, unit_hint, agg.status), label,
             tooltip="; ".join(agg.parts),
         )
+
+    def measured_or_reported(
+        candidates: list[tuple[str, str, str]], ctx_value: Any, fallback_label: str
+    ) -> str:
+        """First measured figure wins (e.g. Datadog hosts API before kubectl
+        nodes); context inventory is the last resort."""
+        for figure_id, label, unit_hint in candidates:
+            if aggregate(figures, figure_id) is not None:
+                return measured(figure_id, label, unit_hint)
+        return reported(ctx_value, fallback_label)
+
+    cards.append(reported(len(envs) or None, "Environments"))
+    cards.append(
+        measured_or_reported(
+            [("infra.services_total", "Services", "services")],
+            inv.get("total_services"), "Services",
+        )
+    )
+    cards.append(
+        measured_or_reported(
+            [
+                ("hosts.count", "Hosts (monitored)", "hosts"),
+                ("infra.nodes_total", "Compute Nodes", "nodes"),
+            ],
+            inv.get("total_nodes"), "Compute Nodes",
+        )
+    )
 
     metrics_agg = aggregate(figures, "metrics.samples_per_sec")
     if metrics_agg is not None:

@@ -187,18 +187,18 @@ gcloud container clusters list --format=json 2>/dev/null | jq 'length'
 
 Aggregates only: total nodes, vCPU, memory, instance-type families per environment. Do NOT collect per-resource detail, individual node IPs, or anything cost-related — this phase exists to size the environment for onboarding, not to audit it.
 
+If any kubectl context exists, run the k8s inventory collector — do not sum node capacities yourself:
+
 ```bash
-# Per cluster/context
-kubectl get nodes -o json 2>/dev/null | jq '{
-  total_nodes: (.items | length),
-  total_vcpu: ([.items[].status.capacity.cpu | tonumber] | add),
-  total_memory_gi: ([.items[].status.capacity.memory | rtrimstr("Ki") | tonumber / 1048576] | add | floor),
-  instance_types: [.items[].metadata.labels["node.kubernetes.io/instance-type"]] | unique
-}'
-kubectl get pods -A --no-headers 2>/dev/null | wc -l
-kubectl get deployments -A --no-headers 2>/dev/null | wc -l
-kubectl get namespaces --no-headers 2>/dev/null | wc -l
+uv run collectors/k8s/collect.py --all-contexts --output-dir ./discovery-output/k8s
+# or, for selected clusters:
+uv run collectors/k8s/collect.py --context prod-eks --context stg-eks \
+  --output-dir ./discovery-output/k8s
 ```
+
+It measures nodes, vCPU, memory (GiB), and deployment counts per context with kubectl evidence, and its summary.json feeds the report's Compute/Services cards directly. For monitored-host counts, vendor collectors also contribute (e.g. the Datadog collector's `hosts.count` from the hosts API — preferred on Datadog-centric environments since it covers non-k8s hosts too).
+
+Environment *naming/classification* (which cluster is prod vs staging) is yours: record it in `context.json.environments[]`, using the collector's per-context inventory for the numbers.
 
 ### Phase 4: Observability Stack Discovery
 
@@ -234,6 +234,7 @@ For each detection below, plan to run the matching collector in Phase 5. A tool 
 
 | Detected | Collector |
 |---|---|
+| any kubectl context | `collectors/k8s/collect.py` (inventory; run in Phase 3) |
 | prometheus / thanos / victoriametrics / vmagent pods, `monitoring.coreos.com` CRDs, loki / tempo pods | `collectors/promstack/collect.py` *(planned — record as skipped until shipped)* |
 | mimir / cortex pods or charts | `collectors/mimir/collect.py` *(planned)* |
 | elasticsearch / kibana pods, AWS ES domains | `collectors/elasticsearch/collect.py` *(planned)* |
@@ -246,9 +247,9 @@ For rows marked *(planned)*, the collector does not exist yet in this version of
 
 ### Phase 5: Scale & Cost Measurement (collectors)
 
-#### 5.1 Infrastructure aggregates (agentic, inventory only)
+#### 5.1 Infrastructure aggregates
 
-Use the Phase 3 numbers per environment; they go into `context.json` (`environments[]`, `infra_inventory`). These are inventory facts, not billed volumes, so collecting them yourself is fine.
+Measured by the k8s collector in Phase 3 (`./discovery-output/k8s/summary.json`). Your job here is only classification: copy the per-context numbers from its inventory into `context.json.environments[]` with the right env labels (prod/staging/dev). Do not recompute totals — the report's cards read the collector figures directly.
 
 #### 5.2 Observability volumes & costs (collectors only)
 

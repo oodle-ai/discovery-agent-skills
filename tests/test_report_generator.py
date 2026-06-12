@@ -64,6 +64,13 @@ class TestBuildReport:
         assert "<script>alert" not in html
         assert "&lt;script&gt;" in html
 
+    def test_compute_card_prefers_datadog_hosts(self, report_gen, summary, context):
+        html = report_gen.build_report([summary], context, "Test Report")
+        # hosts.count (142, measured by the Datadog hosts API) outranks the
+        # context-reported node count (30)
+        assert "Hosts (monitored)" in html
+        assert "142 hosts" in html
+
     def test_degraded_mode_no_summaries(self, report_gen, context):
         html = report_gen.build_report([], context, "Test Report")
         assert "Acme Corp (fictional sample)" in html

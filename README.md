@@ -31,7 +31,7 @@ deterministic collector script** (`collectors/<tool>/collect.py`) — not by the
   reason (e.g., `permission_denied`) and a remediation — never silently omitted, never guessed.
 - The report itself is rendered by `report/generate_report.py`; the agent cannot edit figures.
 
-Collector status: **Datadog** is available today. Prometheus/Thanos/VictoriaMetrics/Loki/Tempo,
+Collector status: **Datadog** and **Kubernetes inventory** (nodes/vCPU/memory/services via kubectl) are available today. Prometheus/Thanos/VictoriaMetrics/Loki/Tempo,
 Elasticsearch/OpenSearch, Mimir, AWS CloudWatch, and GCP Cloud Operations collectors are in progress;
 until they ship, those tools are covered by user-reported numbers, clearly marked as unverified.
 
