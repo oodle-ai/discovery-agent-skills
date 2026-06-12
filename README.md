@@ -1,5 +1,7 @@
 # Oodle Discovery Agent Skills
 
+<p align="center"><strong>Runs entirely in your environment · Read-only operations only · No data shared externally</strong></p>
+
 Automated tech stack and observability discovery for AI coding agents. Install the skill, run a single prompt, and get a comprehensive HTML report of your infrastructure, observability tools, scale, costs, and pain points.
 
 ## What It Does
@@ -21,13 +23,13 @@ The agent presents a plan before proceeding, asks clarifying questions when it c
 ### Claude Code / Gemini CLI / Codex / Windsurf
 
 ```bash
-npx skills add oodle-ai/discovery-agent-skills -y
+npx skills add -g oodle-ai/discovery-agent-skills -y
 ```
 
 ### Cursor
 
 ```bash
-npx skills add oodle-ai/discovery-agent-skills --agent cursor -y
+npx skills add -g oodle-ai/discovery-agent-skills --agent cursor -y
 ```
 
 ### Manual
