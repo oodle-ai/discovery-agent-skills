@@ -121,5 +121,5 @@ class TestMainCli:
         assert out.exists()
         printed = capsys.readouterr().out
         assert "coverage summary" in printed
-        assert "datadog: 6/7 figures" in printed
+        assert "datadog: 8/9 figures" in printed
         assert "permission_denied" in printed

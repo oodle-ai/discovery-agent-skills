@@ -47,6 +47,21 @@ DD_SITES: dict[str, str] = {
 # Hourly-usage product families and the usage_type measurements we read.
 HOURLY_FAMILIES = ["infra_hosts", "logs", "ingested_spans", "indexed_spans", "rum", "timeseries"]
 
+# Datadog public list prices (USD, on-demand) used ONLY for the fallback
+# estimate when the estimated_cost API is not accessible (needs billing
+# read). Versioned so the report can state which price sheet was assumed;
+# actual contract pricing usually differs.
+LIST_PRICES_VERSION = "2026-06"
+LIST_PRICES = {
+    "infra_host_month": 18.0,
+    "custom_metric_month": 0.05,  # per custom metric beyond the per-host allocation
+    "custom_metrics_per_host_allocation": 100,
+    "logs_ingest_gb": 0.10,
+    "logs_indexed_million_events": 1.70,  # 7-day retention tier
+    "apm_ingest_gb": 0.10,
+    "rum_1k_sessions": 1.50,
+}
+
 EXPECTED = [
     ExpectedFigure("hosts.count", "Active hosts", "hosts", "hosts"),
     ExpectedFigure("metrics.total_count", "Active metric names", "metrics", "metrics"),
@@ -223,6 +238,8 @@ def fetch_usage_summary(
 def fetch_estimated_cost(
     client: HttpClient, now: datetime, ev: EvidenceWriter, results: dict[str, Any]
 ) -> FetchResult:
+    """Current month-to-date cost. This endpoint only serves the current
+    month (verified empirically: past start_month returns empty data)."""
     print("collecting estimated_cost")
     res = client.get_json(
         "/api/v2/usage/estimated_cost",
@@ -233,6 +250,26 @@ def fetch_estimated_cost(
         ev.write("estimated_cost", res.data, source_api="GET /api/v2/usage/estimated_cost")
     else:
         print(f"  WARN estimated_cost: {res.error}")
+    return res
+
+
+def fetch_historical_cost(
+    client: HttpClient, now: datetime, ev: EvidenceWriter, results: dict[str, Any]
+) -> FetchResult:
+    """Past billed months come from historical_cost, not estimated_cost.
+    May legitimately be empty early in a month (previous month not yet
+    finalized) or for young orgs."""
+    print("collecting historical_cost")
+    prev_month = (now.replace(day=1) - timedelta(days=1)).strftime("%Y-%m")
+    res = client.get_json(
+        "/api/v2/usage/historical_cost",
+        params={"view": "summary", "start_month": prev_month},
+    )
+    if res.ok:
+        results["historical_cost"] = res.data
+        ev.write("historical_cost", res.data, source_api="GET /api/v2/usage/historical_cost")
+    else:
+        print(f"  WARN historical_cost: {res.error}")
     return res
 
 
@@ -345,6 +382,209 @@ def add_hourly_figure(
     )
 
 
+def estimate_cost_from_usage(results: dict[str, Any]) -> tuple[float, list[dict[str, Any]]]:
+    """Fallback: estimate monthly cost from collected usage x public list prices.
+
+    Used only when the estimated_cost API is inaccessible. Every component
+    states its basis; the figure is emitted as status=estimated.
+    """
+    p = LIST_PRICES
+    comps: list[dict[str, Any]] = []
+
+    def comp(product: str, basis: str, monthly: float) -> None:
+        if monthly > 0:
+            comps.append({"product": product, "basis": basis, "monthly_usd": round(monthly, 2)})
+
+    hosts = avg(hourly_values(results.get("usage_hourly_infra_hosts"), "host_count"))
+    if hosts:
+        comp("infra_host", f"{hosts:.0f} avg hosts x ${p['infra_host_month']}/host/mo",
+             hosts * p["infra_host_month"])
+    custom = avg(hourly_values(results.get("usage_hourly_timeseries"), "num_custom_timeseries"))
+    if custom:
+        allocation = (hosts or 0) * p["custom_metrics_per_host_allocation"]
+        billable = max(0.0, custom - allocation)
+        comp(
+            "custom_metrics",
+            f"{custom:.0f} avg custom metrics - {allocation:.0f} host allocation, "
+            f"x ${p['custom_metric_month']}/metric/mo",
+            billable * p["custom_metric_month"],
+        )
+    logs_bytes_day = per_day(hourly_values(results.get("usage_hourly_logs"),
+                                           "ingested_events_bytes"))
+    if logs_bytes_day:
+        gb_day = logs_bytes_day / 1e9
+        comp("logs_ingest", f"{gb_day:.1f} GB/day x 30 x ${p['logs_ingest_gb']}/GB",
+             gb_day * 30 * p["logs_ingest_gb"])
+    indexed_day = per_day(hourly_values(results.get("usage_hourly_logs"),
+                                        "indexed_events_count"))
+    if indexed_day:
+        m_events = indexed_day * 30 / 1e6
+        comp(
+            "logs_indexed",
+            f"{m_events:.1f}M events/mo x ${p['logs_indexed_million_events']}/M (7d tier)",
+            m_events * p["logs_indexed_million_events"],
+        )
+    spans_bytes_day = per_day(hourly_values(results.get("usage_hourly_ingested_spans"),
+                                            "ingested_events_bytes"))
+    if spans_bytes_day:
+        gb_day = spans_bytes_day / 1e9
+        comp("apm_ingest", f"{gb_day:.1f} GB/day x 30 x ${p['apm_ingest_gb']}/GB",
+             gb_day * 30 * p["apm_ingest_gb"])
+    rum_day = per_day(hourly_values(results.get("usage_hourly_rum"), "rum_total_session_count"))
+    if rum_day:
+        comp("rum", f"{rum_day:.0f} sessions/day x 30 / 1000 x ${p['rum_1k_sessions']}",
+             rum_day * 30 / 1000 * p["rum_1k_sessions"])
+    return sum(c["monthly_usd"] for c in comps), comps
+
+
+def build_cost_figures(
+    results: dict[str, Any],
+    fetches: dict[str, FetchResult],
+    summary: SummaryWriter,
+) -> None:
+    """cost.monthly_usd (headline) + month-to-date / projection sub-figures.
+
+    Headline preference: last full month (stable, fully accrued) > linear
+    projection of the current month (estimated) > usage x list prices
+    (estimated fallback when the billing API is inaccessible).
+    """
+    now = datetime.now(UTC)
+    cur_month = now.strftime("%Y-%m")
+    prev_month = (now.replace(day=1) - timedelta(days=1)).strftime("%Y-%m")
+
+    months: dict[str, dict[str, Any]] = {}
+
+    def ingest(payload: Any, evidence_file: str, source: str) -> None:
+        for entry in (payload or {}).get("data", []):
+            attrs = entry.get("attributes", {})
+            if attrs.get("total_cost") is None:
+                continue
+            month = str(attrs.get("date", ""))[:7]
+            # historical (finalized) is ingested first and wins over estimated
+            if month in months:
+                continue
+            m = months.setdefault(
+                month, {"total": 0.0, "charges": [], "evidence": evidence_file,
+                        "source": source}
+            )
+            m["total"] += float(attrs["total_cost"])
+            for ch in attrs.get("charges", []):
+                if ch.get("cost"):
+                    m["charges"].append(
+                        {
+                            "product": ch.get("product_name", "unknown"),
+                            "charge_type": ch.get("charge_type", ""),
+                            "monthly_usd": round(float(ch["cost"]), 2),
+                        }
+                    )
+
+    ingest(results.get("historical_cost"), "evidence/historical_cost.json",
+           "GET /api/v2/usage/historical_cost?view=summary")
+    ingest(results.get("estimated_cost"), "evidence/estimated_cost.json",
+           "GET /api/v2/usage/estimated_cost?view=summary")
+
+    evidence = ["evidence/estimated_cost.json"]
+    source_api = "GET /api/v2/usage/estimated_cost?view=summary"
+    mtd = months.get(cur_month, {}).get("total")
+    last_full = months.get(prev_month, {}).get("total")
+
+    if mtd is not None:
+        summary.add_figure(Figure(
+            id="datadog.cost_month_to_date_usd",
+            label=f"Datadog cost, month to date ({cur_month})",
+            value=round(mtd, 2), unit="USD", status="ok",
+            method="Datadog estimated_cost API, current month "
+            "(same source as the Usage & Cost page)",
+            source_api=source_api, evidence_files=evidence,
+        ))
+        days_in_month = (
+            (now.replace(day=28) + timedelta(days=4)).replace(day=1) - timedelta(days=1)
+        ).day
+        projected = mtd / max(1, now.day) * days_in_month
+        summary.add_figure(Figure(
+            id="datadog.cost_projected_month_usd",
+            label=f"Datadog cost, projected full month ({cur_month})",
+            value=round(projected, 2), unit="USD", status="estimated",
+            method=f"linear extrapolation: month-to-date / {now.day} days elapsed "
+            f"x {days_in_month} days",
+            source_api=source_api, evidence_files=evidence,
+        ))
+
+    def pick_breakdown(month: str) -> None:
+        charges = months.get(month, {}).get("charges", [])
+        totals = [c for c in charges if c["charge_type"] == "total"]
+        breakdown = totals if totals else charges
+        if breakdown:
+            summary.inventory["cost_breakdown"] = sorted(
+                breakdown, key=lambda c: -c["monthly_usd"]
+            )
+            summary.inventory["cost_breakdown_month"] = month
+
+    if last_full is not None:
+        prev_info = months[prev_month]
+        summary.add_figure(Figure(
+            id="cost.monthly_usd",
+            label=f"Datadog cost, last full month ({prev_month})",
+            value=round(last_full, 2), unit="USD", status="ok",
+            method=f"Datadog billed cost for the last full month ({prev_month}) "
+            "(same source as the Usage & Cost page)",
+            source_api=prev_info["source"], evidence_files=[prev_info["evidence"]],
+        ))
+        pick_breakdown(prev_month)
+        return
+    if mtd is not None:
+        days_in_month = (
+            (now.replace(day=28) + timedelta(days=4)).replace(day=1) - timedelta(days=1)
+        ).day
+        summary.add_figure(Figure(
+            id="cost.monthly_usd",
+            label=f"Datadog cost, projected full month ({cur_month})",
+            value=round(mtd / max(1, now.day) * days_in_month, 2), unit="USD",
+            status="estimated",
+            method=f"no billed month available yet; linear extrapolation of "
+            f"month-to-date over {now.day}/{days_in_month} days",
+            source_api=source_api, evidence_files=evidence,
+            notes="first month of usage or org created this month",
+        ))
+        pick_breakdown(cur_month)
+        return
+
+    # Billing API inaccessible: estimate from collected usage x list prices
+    res = fetches.get("estimated_cost")
+    reason = res.gap_reason if res and res.gap_reason else "api_error"
+    api_err = res.error if res and res.error else "estimated cost not present in response"
+    est_total, comps = estimate_cost_from_usage(results)
+    if comps:
+        summary.add_figure(Figure(
+            id="cost.monthly_usd",
+            label="Datadog cost (estimated from usage)",
+            value=round(est_total, 2), unit="USD", status="estimated",
+            method=f"usage x Datadog public list prices ({LIST_PRICES_VERSION}); "
+            "actual contract pricing usually differs; see cost_estimate_components "
+            "for the per-product basis",
+            source_api="GET /api/v2/usage/hourly_usage (usage) x list prices",
+            evidence_files=[
+                f"evidence/usage_hourly_{f}.json" for f in HOURLY_FAMILIES
+            ],
+            notes=f"estimated_cost API unavailable ({reason}): {api_err}",
+        ))
+        summary.inventory["cost_estimate_components"] = comps
+        summary.add_gap(
+            "cost", ["cost.monthly_usd"], reason,
+            f"estimated_cost API unavailable ({api_err}); cost.monthly_usd is "
+            "estimated from usage x list prices instead of measured billing data",
+            remediation="grant billing_read / usage_read on the application key "
+            "for the measured number",
+        )
+    else:
+        summary.mark_unavailable(
+            "cost.monthly_usd", reason,
+            f"{api_err}; no usage data available for a fallback estimate either",
+            remediation="estimated_cost requires billing_read / usage_read permission "
+            "on the application key",
+        )
+
+
 def build_summary(
     results: dict[str, Any],
     fetches: dict[str, FetchResult],
@@ -450,61 +690,7 @@ def build_summary(
             res.error if res and res.error else "monitor list unavailable",
         )
 
-    # cost.monthly_usd — Datadog's own estimated cost (month to date),
-    # plus the per-product charge breakdown for the deep-dive section
-    cost = results.get("estimated_cost")
-    cost_value: float | None = None
-    charges: list[dict[str, Any]] = []
-    entries_seen = 0
-    if cost:
-        for entry in cost.get("data", []):
-            attrs = entry.get("attributes", {})
-            if attrs.get("total_cost") is None:
-                continue
-            entries_seen += 1
-            cost_value = (cost_value or 0.0) + float(attrs["total_cost"])
-            for ch in attrs.get("charges", []):
-                if ch.get("cost"):
-                    charges.append(
-                        {
-                            "product": ch.get("product_name", "unknown"),
-                            "charge_type": ch.get("charge_type", ""),
-                            "monthly_usd": round(float(ch["cost"]), 2),
-                        }
-                    )
-    if cost_value is not None:
-        summary.add_figure(
-            Figure(
-                id="cost.monthly_usd",
-                label="Datadog estimated cost (month to date)",
-                value=round(cost_value, 2),
-                unit="USD",
-                status="ok",
-                method="Datadog estimated_cost API, current month summary view "
-                "(same source as the Usage & Cost page)"
-                + (f"; sum of {entries_seen} org entries" if entries_seen > 1 else ""),
-                source_api="GET /api/v2/usage/estimated_cost?view=summary",
-                evidence_files=["evidence/estimated_cost.json"],
-            )
-        )
-        # Datadog emits per-product rows as committed/on_demand plus a
-        # per-product "total"; keep only totals when present to avoid
-        # double counting in the rendered table.
-        totals = [c for c in charges if c["charge_type"] == "total"]
-        breakdown = totals if totals else charges
-        if breakdown:
-            summary.inventory["cost_breakdown"] = sorted(
-                breakdown, key=lambda c: -c["monthly_usd"]
-            )
-    else:
-        res = fetches.get("estimated_cost")
-        summary.mark_unavailable(
-            "cost.monthly_usd",
-            res.gap_reason if res and res.gap_reason else "api_error",
-            res.error if res and res.error else "estimated cost not present in response",
-            remediation="estimated_cost requires billing_read / usage_read permission "
-            "on the application key",
-        )
+    build_cost_figures(results, fetches, summary)
 
     # Inventory (non-numeric facts for the deep-dive section)
     inv = summary.inventory
@@ -594,6 +780,7 @@ def main() -> int:
                 fetch_hourly_usage(client, HOURLY_FAMILIES, start_hr, end_hr, ev, results)
             )
             fetches["estimated_cost"] = fetch_estimated_cost(client, now, ev, results)
+            fetches["historical_cost"] = fetch_historical_cost(client, now, ev, results)
             fetches["metrics_list"] = fetch_metrics_list(client, now, ev, results)
 
     summary = SummaryWriter(

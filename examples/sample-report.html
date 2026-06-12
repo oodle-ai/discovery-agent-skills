@@ -154,7 +154,7 @@
 </div>
 <div class="section"><h2>Observability Spend (Estimated Monthly)</h2>
 <table><thead><tr><th>Source</th><th>Monthly Spend</th><th>Status</th><th>Method</th></tr></thead><tbody>
-<tr><td>datadog</td><td>$41.2K/mo</td><td><span class="status-badge status-ok">ok</span></td><td>estimated_cost API, month to date</td></tr>
+<tr><td>datadog</td><td>$41.2K/mo</td><td><span class="status-badge status-ok">ok</span></td><td>Datadog estimated_cost API, last full month (2025-12) (same source as the Usage &amp; Cost page)</td></tr>
 <tr><td><span class="muted">└ infra_host</span></td><td><span class="muted">$28.0K/mo</span></td><td></td><td><span class="muted">total</span></td></tr>
 <tr><td><span class="muted">└ logs_indexed</span></td><td><span class="muted">$9.2K/mo</span></td><td></td><td><span class="muted">total</span></td></tr>
 <tr><td><span class="muted">└ timeseries</span></td><td><span class="muted">$4.0K/mo</span></td><td></td><td><span class="muted">total</span></td></tr>
@@ -167,7 +167,7 @@
 </div>
 <div class="section" id="coverage"><h2>Coverage &amp; Gaps</h2>
 <table><thead><tr><th>Collector</th><th>Figures collected</th><th>Target</th><th>Lookback</th></tr></thead><tbody>
-<tr><td>datadog</td><td>6/7</td><td>https://api.us5.datadoghq.com</td><td>30d</td></tr>
+<tr><td>datadog</td><td>8/9</td><td>https://api.us5.datadoghq.com</td><td>30d</td></tr>
 </tbody></table>
 <h3>Gaps</h3>
 <table><thead><tr><th>Collector</th><th>Area</th><th>Figures</th><th>Reason</th><th>Detail</th><th>Remediation</th></tr></thead><tbody>
@@ -182,12 +182,15 @@
 <tr><td>Active metric names</td><td>1.8K metrics</td><td><span class="status-badge status-ok">ok</span></td><td>count of metric names actively reporting in the last 2h</td><td>—</td></tr>
 <tr><td>Log ingestion</td><td>231.4 GB/day</td><td><span class="status-badge status-ok">ok</span></td><td>sum of hourly ingested_events_bytes / days</td><td>2026-05-13T10:00:00Z → 2026-06-12T10:00:00Z</td></tr>
 <tr><td>Custom metrics (avg)</td><td>18.2K metrics</td><td><span class="status-badge status-ok">ok</span></td><td>avg hourly num_custom_timeseries</td><td>2026-05-13T10:00:00Z → 2026-06-12T10:00:00Z</td></tr>
-<tr><td>Datadog estimated cost</td><td>$41.2K</td><td><span class="status-badge status-ok">ok</span></td><td>estimated_cost API, month to date</td><td>—</td></tr>
+<tr><td>Datadog cost, last full month (2025-12)</td><td>$41.2K</td><td><span class="status-badge status-ok">ok</span></td><td>Datadog estimated_cost API, last full month (2025-12) (same source as the Usage &amp; Cost page)</td><td>—</td></tr>
 <tr><td>Monitors</td><td>312 monitors</td><td><span class="status-badge status-ok">ok</span></td><td>count across pages</td><td>—</td></tr>
 <tr><td>Trace ingestion</td><td>—</td><td><span class="status-badge status-unavailable">unavailable</span></td><td>permission_denied: app key lacks usage_read for ingested_spans</td><td>—</td></tr>
+<tr><td>Datadog cost, month to date (2026-01)</td><td>$1.4K</td><td><span class="status-badge status-ok">ok</span></td><td>Datadog estimated_cost API, current month</td><td>—</td></tr>
+<tr><td>Datadog cost, projected full month (2026-01)</td><td>~$43.1K</td><td><span class="status-badge status-estimated">estimated</span></td><td>linear extrapolation: month-to-date / 1 days elapsed x 31 days</td><td>—</td></tr>
 </tbody></table>
 <table><thead><tr><th>Fact</th><th>Value</th></tr></thead><tbody>
 <tr><td>Dashboards count</td><td>87</td></tr>
+<tr><td>Cost breakdown month</td><td>2025-12</td></tr>
 </tbody></table>
 <h3>Log indexes</h3>
 <table><thead><tr><th>name</th><th>retention days</th><th>daily limit</th></tr></thead><tbody>
@@ -213,6 +216,8 @@
 <tr><td><code>metrics.custom_metrics_count</code></td><td>datadog</td><td>GET /api/v2/usage/hourly_usage?filter[product_families]=timeseries</td><td>usage_type=num_custom_timeseries</td><td><code>evidence/usage_hourly_timeseries.json</code></td></tr>
 <tr><td><code>cost.monthly_usd</code></td><td>datadog</td><td>GET /api/v2/usage/estimated_cost?view=summary</td><td>—</td><td><code>evidence/estimated_cost.json</code></td></tr>
 <tr><td><code>alerts.monitor_count</code></td><td>datadog</td><td>GET /api/v1/monitor</td><td>—</td><td><code>evidence/monitors.json</code></td></tr>
+<tr><td><code>datadog.cost_month_to_date_usd</code></td><td>datadog</td><td>GET /api/v2/usage/estimated_cost?view=summary</td><td>—</td><td><code>evidence/estimated_cost.json</code></td></tr>
+<tr><td><code>datadog.cost_projected_month_usd</code></td><td>datadog</td><td>GET /api/v2/usage/estimated_cost?view=summary</td><td>—</td><td><code>evidence/estimated_cost.json</code></td></tr>
 </tbody></table>
 </div>
 </div>

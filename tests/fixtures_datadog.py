@@ -85,24 +85,55 @@ SLOS = {"data": [{"id": "slo1"}], "metadata": {"total_count": 1}}
 
 USAGE_SUMMARY = {"usage": []}
 
-ESTIMATED_COST = {
-    "data": [
-        {
-            "type": "cost_by_org",
-            "attributes": {
-                "total_cost": 41230.5,
-                "date": "2026-06-01",
-                "charges": [
-                    {"product_name": "infra_host", "charge_type": "committed", "cost": 20000.0},
-                    {"product_name": "infra_host", "charge_type": "on_demand", "cost": 8000.5},
-                    {"product_name": "infra_host", "charge_type": "total", "cost": 28000.5},
-                    {"product_name": "logs_indexed", "charge_type": "total", "cost": 9230.0},
-                    {"product_name": "timeseries", "charge_type": "total", "cost": 4000.0},
-                    {"product_name": "synthetics_api", "charge_type": "total", "cost": 0},
-                ],
+LAST_MONTH_COST = 38000.0
+MTD_COST = 41230.5
+
+
+def estimated_cost_response() -> dict:
+    """Current month-to-date only — the real API ignores past start_month."""
+    cur = datetime.now(UTC).strftime("%Y-%m")
+    return {
+        "data": [
+            {
+                "type": "cost_by_org",
+                "attributes": {
+                    "total_cost": MTD_COST,
+                    "date": f"{cur}-01",
+                    "charges": [
+                        {"product_name": "infra_host", "charge_type": "total", "cost": 28000.5},
+                        {"product_name": "logs_indexed", "charge_type": "total", "cost": 9230.0},
+                        {"product_name": "timeseries", "charge_type": "total", "cost": 4000.0},
+                    ],
+                },
             },
-        }
-    ]
-}
+        ]
+    }
+
+
+def historical_cost_response() -> dict:
+    """Previous (finalized) month with per-product charges."""
+    now = datetime.now(UTC)
+    prev = (now.replace(day=1) - timedelta(days=1)).strftime("%Y-%m")
+    return {
+        "data": [
+            {
+                "type": "cost_by_org",
+                "attributes": {
+                    "total_cost": LAST_MONTH_COST,
+                    "date": f"{prev}-01",
+                    "charges": [
+                        {"product_name": "infra_host", "charge_type": "committed",
+                         "cost": 20000.0},
+                        {"product_name": "infra_host", "charge_type": "on_demand",
+                         "cost": 5000.0},
+                        {"product_name": "infra_host", "charge_type": "total", "cost": 25000.0},
+                        {"product_name": "logs_indexed", "charge_type": "total", "cost": 9000.0},
+                        {"product_name": "timeseries", "charge_type": "total", "cost": 4000.0},
+                        {"product_name": "synthetics_api", "charge_type": "total", "cost": 0},
+                    ],
+                },
+            },
+        ]
+    }
 
 METRICS_LIST = {"metrics": ["system.cpu.user", "app.requests", "custom.thing"], "from": "ts"}

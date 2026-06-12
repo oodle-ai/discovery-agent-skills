@@ -29,7 +29,9 @@ cost). Re-derive `summary.json` offline from saved evidence with
 | `traces.ingest_gb_per_day` | hourly usage family `ingested_spans` | sum of hourly `ingested_events_bytes` / days covered / 1e9 |
 | `datadog.rum_sessions_per_day` | hourly usage family `rum` | sum of hourly `rum_total_session_count` / days covered |
 | `alerts.monitor_count` | `GET /api/v1/monitor` (paginated) | count |
-| `cost.monthly_usd` | `GET /api/v2/usage/estimated_cost?view=summary` | `total_cost`, current month to date |
+| `cost.monthly_usd` | `GET /api/v2/usage/historical_cost?view=summary` | last full month's billed `total_cost` (most stable monthly number); falls back to a linear projection of month-to-date (`estimated`), then to usage × public list prices (`estimated`, see below) |
+| `datadog.cost_month_to_date_usd` | `GET /api/v2/usage/estimated_cost?view=summary` | current month `total_cost` (estimated_cost only serves the current month; past months come from historical_cost) |
+| `datadog.cost_projected_month_usd` | derived | month-to-date / days elapsed × days in month (`estimated`) |
 
 Inventory (deep-dive section): dashboards, notebooks, SLOs, synthetics by
 type, monitors by type, log indexes with retention/daily limits, log pipeline
@@ -50,8 +52,15 @@ count, billable infra hosts (avg/max from hourly usage).
 - **Custom metrics** use the `timeseries` family's hourly
   `num_custom_timeseries` gauge (averaged), matching the billing definition,
   instead of summary-field candidates.
-- **Estimated cost added** (`/api/v2/usage/estimated_cost`); a 403 becomes a
-  gap with the required permission named, never a guessed number.
+- **Cost figures added** (`/api/v2/usage/historical_cost` + `estimated_cost`).
+  The headline is the last fully-billed month with its per-product charge
+  breakdown (`inventory.cost_breakdown`, product `total` rows only to avoid
+  committed/on-demand double counting). If the billing APIs are denied, the
+  collector falls back to usage × Datadog public list prices (versioned in
+  `LIST_PRICES`, per-component basis recorded in
+  `inventory.cost_estimate_components`) with `status: estimated` and an
+  explicit gap naming the missing permission — never a silently guessed
+  number.
 
 ## Validation
 

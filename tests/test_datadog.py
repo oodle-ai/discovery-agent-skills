@@ -9,7 +9,8 @@ import pytest
 BASE = "https://api.datadoghq.com"
 
 
-def mock_datadog(respx_mock, estimated_cost_status=200, hourly_pages=1):
+def mock_datadog(respx_mock, estimated_cost_status=200, hourly_pages=1,
+                 historical_available=True):
     respx_mock.get(f"{BASE}/api/v1/hosts/totals").respond(json=fx.HOSTS_TOTALS)
     respx_mock.get(f"{BASE}/api/v1/dashboard").respond(json=fx.DASHBOARDS)
     respx_mock.get(f"{BASE}/api/v1/synthetics/tests").respond(json=fx.SYNTHETICS)
@@ -27,11 +28,25 @@ def mock_datadog(respx_mock, estimated_cost_status=200, hourly_pages=1):
             return httpx.Response(400, json={"errors": [{"detail": detail}]})
         if estimated_cost_status != 200:
             return httpx.Response(estimated_cost_status, json={"errors": ["Forbidden"]})
-        return httpx.Response(200, json=fx.ESTIMATED_COST)
+        return httpx.Response(200, json=fx.estimated_cost_response())
 
     respx_mock.get(f"{BASE}/api/v2/usage/estimated_cost").mock(
         side_effect=estimated_cost_side_effect
     )
+
+    if estimated_cost_status != 200:
+        respx_mock.get(f"{BASE}/api/v2/usage/historical_cost").respond(
+            status_code=estimated_cost_status, json={"errors": ["Forbidden"]}
+        )
+    elif historical_available:
+        respx_mock.get(f"{BASE}/api/v2/usage/historical_cost").respond(
+            json=fx.historical_cost_response()
+        )
+    else:
+        # previous month not finalized yet (or young org): empty data
+        respx_mock.get(f"{BASE}/api/v2/usage/historical_cost").respond(
+            json={"data": [], "metadata": {}}
+        )
 
     def hourly_side_effect(request: httpx.Request) -> httpx.Response:
         families = request.url.params.get("filter[product_families]").split(",")
@@ -88,15 +103,29 @@ class TestDatadogCollector:
         assert figs["metrics.custom_metrics_count"]["value"] == pytest.approx(1000)
         assert figs["datadog.rum_sessions_per_day"]["value"] == pytest.approx(2400)
         assert figs["alerts.monitor_count"]["value"] == 7
-        assert figs["cost.monthly_usd"]["value"] == pytest.approx(41230.5)
+        # headline cost = last full month (stable), with MTD and projection
+        # as sub-figures
+        assert figs["cost.monthly_usd"]["value"] == pytest.approx(fx.LAST_MONTH_COST)
+        assert figs["cost.monthly_usd"]["status"] == "ok"
+        assert figs["datadog.cost_month_to_date_usd"]["value"] == pytest.approx(fx.MTD_COST)
+        from datetime import UTC, datetime, timedelta
+        now = datetime.now(UTC)
+        days_in_month = (
+            (now.replace(day=28) + timedelta(days=4)).replace(day=1) - timedelta(days=1)
+        ).day
+        expected_projection = fx.MTD_COST / max(1, now.day) * days_in_month
+        proj = figs["datadog.cost_projected_month_usd"]
+        assert proj["value"] == pytest.approx(expected_projection, rel=0.01)
+        assert proj["status"] == "estimated"
         assert summary["gaps"] == []
 
-        # cost breakdown: per-product "total" rows only (no committed/on_demand
-        # double counting), zero-cost products dropped, sorted descending
+        # cost breakdown: from the last full month, per-product "total" rows
+        # only (no committed/on_demand double counting), zero-cost dropped,
+        # sorted descending
         breakdown = summary["inventory"]["cost_breakdown"]
         assert [c["product"] for c in breakdown] == ["infra_host", "logs_indexed", "timeseries"]
         assert all(c["charge_type"] == "total" for c in breakdown)
-        assert sum(c["monthly_usd"] for c in breakdown) == pytest.approx(41230.5)
+        assert sum(c["monthly_usd"] for c in breakdown) == pytest.approx(fx.LAST_MONTH_COST)
 
         # provenance present on every collected figure
         for fig in summary["figures"]:
@@ -119,16 +148,50 @@ class TestDatadogCollector:
         )
         assert len(evidence["data"]) == fx.HOURS
 
-    def test_estimated_cost_403_becomes_gap(
+    def test_no_finalized_month_headline_is_projection(
+        self, datadog_collect, tmp_path, monkeypatch, respx_mock
+    ):
+        from datetime import UTC, datetime, timedelta
+        mock_datadog(respx_mock, historical_available=False)
+        summary = run_collector(datadog_collect, tmp_path, monkeypatch)
+        figs = figures_by_id(summary)
+        cost = figs["cost.monthly_usd"]
+        assert cost["status"] == "estimated"
+        assert "extrapolation" in cost["method"]
+        now = datetime.now(UTC)
+        days_in_month = (
+            (now.replace(day=28) + timedelta(days=4)).replace(day=1) - timedelta(days=1)
+        ).day
+        assert cost["value"] == pytest.approx(
+            fx.MTD_COST / max(1, now.day) * days_in_month, rel=0.01
+        )
+        # MTD still present as its own figure
+        assert figs["datadog.cost_month_to_date_usd"]["value"] == pytest.approx(fx.MTD_COST)
+
+    def test_estimated_cost_403_falls_back_to_usage_estimate(
         self, datadog_collect, tmp_path, monkeypatch, respx_mock
     ):
         mock_datadog(respx_mock, estimated_cost_status=403)
         summary = run_collector(datadog_collect, tmp_path, monkeypatch)
         figs = figures_by_id(summary)
-        assert figs["cost.monthly_usd"]["status"] == "unavailable"
-        assert "permission_denied" in figs["cost.monthly_usd"]["unavailable_reason"]
+        cost = figs["cost.monthly_usd"]
+        assert cost["status"] == "estimated"
+        assert "list prices" in cost["method"]
+        # expected from seeded usage x LIST_PRICES:
+        #   hosts: 50 x $18 = 900; custom: 1000 avg - 5000 allocation -> 0
+        #   logs: 24 GB/day x 30 x $0.10 = 72
+        #   indexed: 1.2M/day x 30 / 1e6 x $1.70 = 61.2
+        #   apm: 12 GB/day x 30 x $0.10 = 36; rum: 2400 x 30 / 1000 x $1.5 = 108
+        assert cost["value"] == pytest.approx(900 + 72 + 61.2 + 36 + 108)
+        comps = summary["inventory"]["cost_estimate_components"]
+        assert {c["product"] for c in comps} == {
+            "infra_host", "logs_ingest", "logs_indexed", "apm_ingest", "rum"
+        }
+        assert all(c["basis"] for c in comps)
+        # the missing measured number is still an explicit gap
         gap = next(g for g in summary["gaps"] if "cost.monthly_usd" in g["figure_ids"])
         assert gap["reason"] == "permission_denied"
+        assert "list prices" in gap["detail"]
         assert gap["remediation"]
 
     def test_credentials_redacted_in_evidence(
