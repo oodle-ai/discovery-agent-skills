@@ -89,7 +89,18 @@ ESTIMATED_COST = {
     "data": [
         {
             "type": "cost_by_org",
-            "attributes": {"total_cost": 41230.5, "date": "2026-06-01"},
+            "attributes": {
+                "total_cost": 41230.5,
+                "date": "2026-06-01",
+                "charges": [
+                    {"product_name": "infra_host", "charge_type": "committed", "cost": 20000.0},
+                    {"product_name": "infra_host", "charge_type": "on_demand", "cost": 8000.5},
+                    {"product_name": "infra_host", "charge_type": "total", "cost": 28000.5},
+                    {"product_name": "logs_indexed", "charge_type": "total", "cost": 9230.0},
+                    {"product_name": "timeseries", "charge_type": "total", "cost": 4000.0},
+                    {"product_name": "synthetics_api", "charge_type": "total", "cost": 0},
+                ],
+            },
         }
     ]
 }

@@ -433,15 +433,28 @@ def build_summary(
             res.error if res and res.error else "monitor list unavailable",
         )
 
-    # cost.monthly_usd — Datadog's own estimated cost (month to date)
+    # cost.monthly_usd — Datadog's own estimated cost (month to date),
+    # plus the per-product charge breakdown for the deep-dive section
     cost = results.get("estimated_cost")
     cost_value: float | None = None
+    charges: list[dict[str, Any]] = []
+    entries_seen = 0
     if cost:
         for entry in cost.get("data", []):
             attrs = entry.get("attributes", {})
-            if attrs.get("total_cost") is not None:
-                cost_value = float(attrs["total_cost"])
-                break
+            if attrs.get("total_cost") is None:
+                continue
+            entries_seen += 1
+            cost_value = (cost_value or 0.0) + float(attrs["total_cost"])
+            for ch in attrs.get("charges", []):
+                if ch.get("cost"):
+                    charges.append(
+                        {
+                            "product": ch.get("product_name", "unknown"),
+                            "charge_type": ch.get("charge_type", ""),
+                            "monthly_usd": round(float(ch["cost"]), 2),
+                        }
+                    )
     if cost_value is not None:
         summary.add_figure(
             Figure(
@@ -451,11 +464,21 @@ def build_summary(
                 unit="USD",
                 status="ok",
                 method="Datadog estimated_cost API, current month summary view "
-                "(same source as the Usage & Cost page)",
+                "(same source as the Usage & Cost page)"
+                + (f"; sum of {entries_seen} org entries" if entries_seen > 1 else ""),
                 source_api="GET /api/v2/usage/estimated_cost?view=summary",
                 evidence_files=["evidence/estimated_cost.json"],
             )
         )
+        # Datadog emits per-product rows as committed/on_demand plus a
+        # per-product "total"; keep only totals when present to avoid
+        # double counting in the rendered table.
+        totals = [c for c in charges if c["charge_type"] == "total"]
+        breakdown = totals if totals else charges
+        if breakdown:
+            summary.inventory["cost_breakdown"] = sorted(
+                breakdown, key=lambda c: -c["monthly_usd"]
+            )
     else:
         res = fetches.get("estimated_cost")
         summary.mark_unavailable(

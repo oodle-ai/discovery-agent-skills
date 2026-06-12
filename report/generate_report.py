@@ -312,6 +312,14 @@ def spend_section(summaries: list[dict], ctx: dict) -> str:
                 T.status_badge(fig["status"]),
                 T.esc(fig.get("method") or ""),
             ])
+            for ch in (s.get("inventory", {}) or {}).get("cost_breakdown", []):
+                rows.append([
+                    f'<span class="muted">└ {T.esc(ch.get("product", ""))}</span>',
+                    f'<span class="muted">'
+                    f"{T.format_value(ch.get('monthly_usd'), 'USD', fig['status'])}/mo</span>",
+                    "",
+                    f'<span class="muted">{T.esc(ch.get("charge_type", ""))}</span>',
+                ])
     for u in ctx.get("user_reported", []) or []:
         if u.get("area") == "cost":
             rows.append([

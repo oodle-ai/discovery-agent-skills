@@ -46,6 +46,14 @@ class TestBuildReport:
         assert "cloudwatch" in html  # skipped collector listed
         assert "aws CLI not configured" in html
 
+    def test_spend_breakdown_rendered(self, report_gen, summary, context):
+        html = report_gen.build_report([summary], context, "Test Report")
+        # per-product rows under the datadog spend row
+        assert "infra_host" in html
+        assert "logs_indexed" in html
+        assert "$28.0K" in html
+        assert "$9.2K" in html
+
     def test_user_reported_marked_unverified(self, report_gen, summary, context):
         html = report_gen.build_report([summary], context, "Test Report")
         assert "Datadog contract" in html

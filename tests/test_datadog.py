@@ -92,6 +92,13 @@ class TestDatadogCollector:
         assert figs["cost.monthly_usd"]["value"] == pytest.approx(41230.5)
         assert summary["gaps"] == []
 
+        # cost breakdown: per-product "total" rows only (no committed/on_demand
+        # double counting), zero-cost products dropped, sorted descending
+        breakdown = summary["inventory"]["cost_breakdown"]
+        assert [c["product"] for c in breakdown] == ["infra_host", "logs_indexed", "timeseries"]
+        assert all(c["charge_type"] == "total" for c in breakdown)
+        assert sum(c["monthly_usd"] for c in breakdown) == pytest.approx(41230.5)
+
         # provenance present on every collected figure
         for fig in summary["figures"]:
             assert fig["method"], fig["id"]

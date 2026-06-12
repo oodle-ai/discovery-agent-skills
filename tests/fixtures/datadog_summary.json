@@ -155,7 +155,24 @@
       "metric alert": 200,
       "log alert": 80,
       "composite": 32
-    }
+    },
+    "cost_breakdown": [
+      {
+        "product": "infra_host",
+        "charge_type": "total",
+        "monthly_usd": 28000.5
+      },
+      {
+        "product": "logs_indexed",
+        "charge_type": "total",
+        "monthly_usd": 9230.0
+      },
+      {
+        "product": "timeseries",
+        "charge_type": "total",
+        "monthly_usd": 4000.0
+      }
+    ]
   },
   "gaps": [
     {
