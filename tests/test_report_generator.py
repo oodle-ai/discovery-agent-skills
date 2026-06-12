@@ -64,6 +64,13 @@ class TestBuildReport:
         assert "<script>alert" not in html
         assert "&lt;script&gt;" in html
 
+    def test_metrics_cards_show_total_and_custom(self, report_gen, summary, context):
+        html = report_gen.build_report([summary], context, "Test Report")
+        assert "Active Metrics" in html
+        assert "1.8K metrics" in html  # metrics.total_count = 1842
+        assert "Custom Metrics" in html
+        assert "18.2K metrics" in html  # metrics.custom_metrics_count = 18234
+
     def test_compute_card_prefers_datadog_hosts(self, report_gen, summary, context):
         html = report_gen.build_report([summary], context, "Test Report")
         # hosts.count (142, measured by the Datadog hosts API) outranks the
@@ -106,5 +113,5 @@ class TestMainCli:
         assert out.exists()
         printed = capsys.readouterr().out
         assert "coverage summary" in printed
-        assert "datadog: 5/6 figures" in printed
+        assert "datadog: 6/7 figures" in printed
         assert "permission_denied" in printed

@@ -169,12 +169,15 @@ def exec_cards(figures: dict, ctx: dict) -> str:
         )
     )
 
-    metrics_agg = aggregate(figures, "metrics.samples_per_sec")
-    if metrics_agg is not None:
+    if aggregate(figures, "metrics.samples_per_sec") is not None:
         cards.append(measured("metrics.samples_per_sec", "Metrics Ingestion", "samples/sec"))
     elif aggregate(figures, "metrics.active_series") is not None:
         cards.append(measured("metrics.active_series", "Active Time Series", "series"))
     else:
+        # SaaS vendors (Datadog) count metrics rather than samples/series:
+        # show the full picture - all active metrics and the billed custom subset
+        if aggregate(figures, "metrics.total_count") is not None:
+            cards.append(measured("metrics.total_count", "Active Metrics", "metrics"))
         cards.append(measured("metrics.custom_metrics_count", "Custom Metrics", "metrics"))
     cards.append(measured("logs.ingest_gb_per_day", "Log Volume", "GB/day"))
     if aggregate(figures, "traces.spans_per_sec") is not None:

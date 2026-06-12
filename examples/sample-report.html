@@ -126,6 +126,7 @@
 <div class="summary-grid"><div class="summary-card" title="reported by agent/user — not collector-verified"><div class="value">2</div><div class="label">Environments</div></div>
 <div class="summary-card" title="reported by agent/user — not collector-verified"><div class="value">59</div><div class="label">Services</div></div>
 <div class="summary-card" title="datadog: 142 hosts (ok)"><div class="value">142 hosts</div><div class="label">Hosts (monitored)</div></div>
+<div class="summary-card" title="datadog: 1.8K metrics (ok)"><div class="value">1.8K metrics</div><div class="label">Active Metrics</div></div>
 <div class="summary-card" title="datadog: 18.2K metrics (ok)"><div class="value">18.2K metrics</div><div class="label">Custom Metrics</div></div>
 <div class="summary-card" title="datadog: 231.4 GB/day (ok)"><div class="value">231.4 GB/day</div><div class="label">Log Volume</div></div>
 <div class="summary-card" title="no measured figure; see Coverage &amp; Gaps"><div class="value">—</div><div class="label">Trace Volume</div></div>
@@ -146,7 +147,7 @@
 </div>
 <div class="section"><h2>Observability Stack &amp; Scale</h2>
 <table><thead><tr><th>Signal</th><th>Tools</th><th>Measured Scale (hover for source)</th></tr></thead><tbody>
-<tr><td>Metrics</td><td><span class="tag tag-blue">Datadog</span></td><td><span title="datadog: 18.2K metrics (ok)">18.2K custom metrics</span> <span class="status-badge status-ok">ok</span></td></tr>
+<tr><td>Metrics</td><td><span class="tag tag-blue">Datadog</span></td><td><span title="datadog: 18.2K metrics (ok)">18.2K custom metrics</span> <span class="status-badge status-ok">ok</span><br><span title="datadog: 1.8K metrics (ok)">1.8K metric names</span> <span class="status-badge status-ok">ok</span></td></tr>
 <tr><td>Logs</td><td><span class="tag tag-blue">Datadog Logs</span></td><td><span title="datadog: 231.4 GB/day (ok)">231.40 GB/day ingested</span> <span class="status-badge status-ok">ok</span></td></tr>
 <tr><td>Alerting</td><td><span class="tag tag-blue">Datadog Monitors</span> <span class="tag tag-blue">PagerDuty</span></td><td><span title="datadog: 312 monitors (ok)">312 monitors</span> <span class="status-badge status-ok">ok</span></td></tr>
 </tbody></table>
@@ -163,7 +164,7 @@
 </div>
 <div class="section" id="coverage"><h2>Coverage &amp; Gaps</h2>
 <table><thead><tr><th>Collector</th><th>Figures collected</th><th>Target</th><th>Lookback</th></tr></thead><tbody>
-<tr><td>datadog</td><td>5/6</td><td>https://api.us5.datadoghq.com</td><td>30d</td></tr>
+<tr><td>datadog</td><td>6/7</td><td>https://api.us5.datadoghq.com</td><td>30d</td></tr>
 </tbody></table>
 <h3>Gaps</h3>
 <table><thead><tr><th>Collector</th><th>Area</th><th>Figures</th><th>Reason</th><th>Detail</th><th>Remediation</th></tr></thead><tbody>
@@ -175,6 +176,7 @@
 <details class="deep-dive"><summary>datadog — collected details</summary><div class="deep-dive-body"><p class="muted">Detected: detected_backend=datadog, site=us5.datadoghq.com</p>
 <table><thead><tr><th>Figure</th><th>Value</th><th>Status</th><th>Method / Reason</th><th>Window</th></tr></thead><tbody>
 <tr><td>Active hosts</td><td>142 hosts</td><td><span class="status-badge status-ok">ok</span></td><td>hosts/totals total_active</td><td>—</td></tr>
+<tr><td>Active metric names</td><td>1.8K metrics</td><td><span class="status-badge status-ok">ok</span></td><td>count of metric names actively reporting in the last 2h</td><td>—</td></tr>
 <tr><td>Log ingestion</td><td>231.4 GB/day</td><td><span class="status-badge status-ok">ok</span></td><td>sum of hourly ingested_events_bytes / days</td><td>2026-05-13T10:00:00Z → 2026-06-12T10:00:00Z</td></tr>
 <tr><td>Custom metrics (avg)</td><td>18.2K metrics</td><td><span class="status-badge status-ok">ok</span></td><td>avg hourly num_custom_timeseries</td><td>2026-05-13T10:00:00Z → 2026-06-12T10:00:00Z</td></tr>
 <tr><td>Datadog estimated cost</td><td>$41.2K</td><td><span class="status-badge status-ok">ok</span></td><td>estimated_cost API, month to date</td><td>—</td></tr>
@@ -197,6 +199,7 @@
 <div class="section"><h2>Provenance Appendix</h2>
 <p class="muted">Every measured figure below can be re-derived from the raw API response captured in the listed evidence file (under each collector's output directory).</p><table class="provenance"><thead><tr><th>Figure</th><th>Collector</th><th>Source API</th><th>Query</th><th>Evidence</th></tr></thead><tbody>
 <tr><td><code>hosts.count</code></td><td>datadog</td><td>GET /api/v1/hosts/totals</td><td>—</td><td><code>evidence/hosts_totals.json</code></td></tr>
+<tr><td><code>metrics.total_count</code></td><td>datadog</td><td>GET /api/v1/metrics?from=&lt;2h ago&gt;</td><td>—</td><td><code>evidence/metrics_list.json</code></td></tr>
 <tr><td><code>logs.ingest_gb_per_day</code></td><td>datadog</td><td>GET /api/v2/usage/hourly_usage?filter[product_families]=logs</td><td>usage_type=ingested_events_bytes</td><td><code>evidence/usage_hourly_logs.json</code></td></tr>
 <tr><td><code>metrics.custom_metrics_count</code></td><td>datadog</td><td>GET /api/v2/usage/hourly_usage?filter[product_families]=timeseries</td><td>usage_type=num_custom_timeseries</td><td><code>evidence/usage_hourly_timeseries.json</code></td></tr>
 <tr><td><code>cost.monthly_usd</code></td><td>datadog</td><td>GET /api/v2/usage/estimated_cost?view=summary</td><td>—</td><td><code>evidence/estimated_cost.json</code></td></tr>
