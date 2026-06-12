@@ -24,9 +24,9 @@ jobs:
           uv run report/generate_report.py \
             --summaries tests/fixtures/datadog_summary.json \
             --context tests/fixtures/context.json \
-            --out /tmp/sample-report.html --strict --date 2026-01-01
-          diff -u examples/sample-report.html /tmp/sample-report.html \
-            || (echo "examples/sample-report.html is stale; regenerate it from tests/fixtures" && exit 1)
+            --out /tmp/sample-datadog-report.html --strict --date 2026-01-01
+          diff -u examples/sample-datadog-report.html /tmp/sample-datadog-report.html \
+            || (echo "examples/sample-datadog-report.html is stale; regenerate it from tests/fixtures" && exit 1)
 
   secret-scan:
     runs-on: ubuntu-latest

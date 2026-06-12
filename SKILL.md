@@ -423,4 +423,4 @@ End by telling the user: the `discovery-output/` directory contains the raw evid
 - [Oodle](https://oodle.ai) — Observability platform
 - `schemas/summary.schema.json` — collector output contract
 - `schemas/context.schema.json` — agent context contract
-- `examples/sample-report.html` — reference output style
+- `examples/sample-datadog-report.html` — reference output style

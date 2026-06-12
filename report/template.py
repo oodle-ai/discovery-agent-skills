@@ -1,7 +1,7 @@
 """HTML building blocks for the discovery report.
 
 Single self-contained file, no external assets. The executive layer keeps the
-look of examples/sample-report.html; deep-dive and provenance styles are new.
+look of examples/sample-datadog-report.html; deep-dive and provenance styles are new.
 """
 
 from __future__ import annotations
