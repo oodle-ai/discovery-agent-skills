@@ -1,0 +1,11 @@
+.env
+.env.*
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+.ruff_cache/
+discovery-output/
+discovery-report.html
+*.tar.gz
+.DS_Store

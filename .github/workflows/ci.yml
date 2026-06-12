@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.11"
+      - name: Lint
+        run: uvx ruff check collectors report tests
+      - name: Tests
+        run: |
+          uv sync --group dev
+          uv run pytest tests -q
+      - name: Sample report freshness
+        run: |
+          uv run report/generate_report.py \
+            --summaries tests/fixtures/datadog_summary.json \
+            --context tests/fixtures/context.json \
+            --out /tmp/sample-report.html --strict --date 2026-01-01
+          diff -u examples/sample-report.html /tmp/sample-report.html \
+            || (echo "examples/sample-report.html is stale; regenerate it from tests/fixtures" && exit 1)
+
+  secret-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      # The gitleaks CLI is MIT-licensed; the marketplace Action requires a
+      # paid license for org repos, so run the binary directly.
+      - name: Run gitleaks
+        env:
+          GITLEAKS_VERSION: "8.30.1"
+        run: |
+          curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
+            | tar -xz gitleaks
+          ./gitleaks git --no-banner --redact --verbose .

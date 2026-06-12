@@ -1,0 +1,28 @@
+[project]
+name = "discovery-agent-skills"
+version = "2.0.0"
+description = "Oodle discovery skill: deterministic collectors + verifiable report generator (dev tooling only; collectors are PEP 723 scripts run via uv)"
+requires-python = ">=3.11"
+
+[tool.uv]
+package = false
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "respx>=0.21",
+    "httpx>=0.27",
+    "jsonschema>=4.21",
+    "ruff>=0.6",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+include = ["collectors/**/*.py", "report/**/*.py", "tests/**/*.py"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

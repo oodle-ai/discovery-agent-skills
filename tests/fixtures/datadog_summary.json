@@ -1,0 +1,223 @@
+{
+  "schema_version": "1.0",
+  "collector": "datadog",
+  "collector_version": "2.0.0",
+  "run": {
+    "started_at": "2026-06-12T10:00:00Z",
+    "finished_at": "2026-06-12T10:02:00Z",
+    "target": "https://api.datadoghq.com",
+    "lookback": "30d",
+    "args_redacted": {
+      "site": "us1"
+    }
+  },
+  "environment": {
+    "detected_backend": "datadog",
+    "version": null,
+    "detection_method": "site flag",
+    "site": "datadoghq.com"
+  },
+  "figures": [
+    {
+      "id": "hosts.count",
+      "label": "Active hosts",
+      "value": 142,
+      "unit": "hosts",
+      "status": "ok",
+      "method": "hosts/totals total_active",
+      "source_api": "GET /api/v1/hosts/totals",
+      "query": null,
+      "time_window": null,
+      "evidence_files": [
+        "evidence/hosts_totals.json"
+      ],
+      "notes": null,
+      "unavailable_reason": null,
+      "remediation": null
+    },
+    {
+      "id": "metrics.total_count",
+      "label": "Active metric names",
+      "value": 1842,
+      "unit": "metrics",
+      "status": "ok",
+      "method": "count of metric names actively reporting in the last 2h",
+      "source_api": "GET /api/v1/metrics?from=<2h ago>",
+      "query": null,
+      "time_window": null,
+      "evidence_files": [
+        "evidence/metrics_list.json"
+      ],
+      "notes": null,
+      "unavailable_reason": null,
+      "remediation": null
+    },
+    {
+      "id": "logs.ingest_gb_per_day",
+      "label": "Log ingestion",
+      "value": 231.4,
+      "unit": "GB/day",
+      "status": "ok",
+      "method": "sum of hourly ingested_events_bytes / days",
+      "source_api": "GET /api/v2/usage/hourly_usage?filter[product_families]=logs",
+      "query": "usage_type=ingested_events_bytes",
+      "time_window": {
+        "start": "2026-05-13T10:00:00Z",
+        "end": "2026-06-12T10:00:00Z"
+      },
+      "evidence_files": [
+        "evidence/usage_hourly_logs.json"
+      ],
+      "notes": null,
+      "unavailable_reason": null,
+      "remediation": null
+    },
+    {
+      "id": "metrics.custom_metrics_count",
+      "label": "Custom metrics (avg)",
+      "value": 18234,
+      "unit": "metrics",
+      "status": "ok",
+      "method": "avg hourly num_custom_timeseries",
+      "source_api": "GET /api/v2/usage/hourly_usage?filter[product_families]=timeseries",
+      "query": "usage_type=num_custom_timeseries",
+      "time_window": {
+        "start": "2026-05-13T10:00:00Z",
+        "end": "2026-06-12T10:00:00Z"
+      },
+      "evidence_files": [
+        "evidence/usage_hourly_timeseries.json"
+      ],
+      "notes": null,
+      "unavailable_reason": null,
+      "remediation": null
+    },
+    {
+      "id": "cost.monthly_usd",
+      "label": "Datadog cost, last full month (2025-12)",
+      "value": 41230.5,
+      "unit": "USD",
+      "status": "ok",
+      "method": "Datadog estimated_cost API, last full month (2025-12) (same source as the Usage & Cost page)",
+      "source_api": "GET /api/v2/usage/estimated_cost?view=summary",
+      "query": null,
+      "time_window": null,
+      "evidence_files": [
+        "evidence/estimated_cost.json"
+      ],
+      "notes": null,
+      "unavailable_reason": null,
+      "remediation": null
+    },
+    {
+      "id": "alerts.monitor_count",
+      "label": "Monitors",
+      "value": 312,
+      "unit": "monitors",
+      "status": "ok",
+      "method": "count across pages",
+      "source_api": "GET /api/v1/monitor",
+      "query": null,
+      "time_window": null,
+      "evidence_files": [
+        "evidence/monitors.json"
+      ],
+      "notes": null,
+      "unavailable_reason": null,
+      "remediation": null
+    },
+    {
+      "id": "traces.ingest_gb_per_day",
+      "label": "Trace ingestion",
+      "value": null,
+      "unit": "GB/day",
+      "status": "unavailable",
+      "method": null,
+      "source_api": null,
+      "query": null,
+      "time_window": null,
+      "evidence_files": [],
+      "notes": null,
+      "unavailable_reason": "permission_denied: app key lacks usage_read for ingested_spans",
+      "remediation": "grant usage_read to the application key"
+    },
+    {
+      "id": "datadog.cost_month_to_date_usd",
+      "label": "Datadog cost, month to date (2026-01)",
+      "value": 1390.2,
+      "unit": "USD",
+      "status": "ok",
+      "method": "Datadog estimated_cost API, current month",
+      "source_api": "GET /api/v2/usage/estimated_cost?view=summary",
+      "query": null,
+      "time_window": null,
+      "evidence_files": [
+        "evidence/estimated_cost.json"
+      ],
+      "notes": null,
+      "unavailable_reason": null,
+      "remediation": null
+    },
+    {
+      "id": "datadog.cost_projected_month_usd",
+      "label": "Datadog cost, projected full month (2026-01)",
+      "value": 43096.2,
+      "unit": "USD",
+      "status": "estimated",
+      "method": "linear extrapolation: month-to-date / 1 days elapsed x 31 days",
+      "source_api": "GET /api/v2/usage/estimated_cost?view=summary",
+      "query": null,
+      "time_window": null,
+      "evidence_files": [
+        "evidence/estimated_cost.json"
+      ],
+      "notes": null,
+      "unavailable_reason": null,
+      "remediation": null
+    }
+  ],
+  "inventory": {
+    "dashboards_count": 87,
+    "log_indexes": [
+      {
+        "name": "main",
+        "retention_days": 15,
+        "daily_limit": null
+      }
+    ],
+    "monitors_by_type": {
+      "metric alert": 200,
+      "log alert": 80,
+      "composite": 32
+    },
+    "cost_breakdown": [
+      {
+        "product": "infra_host",
+        "charge_type": "total",
+        "monthly_usd": 28000.5
+      },
+      {
+        "product": "logs_indexed",
+        "charge_type": "total",
+        "monthly_usd": 9230.0
+      },
+      {
+        "product": "timeseries",
+        "charge_type": "total",
+        "monthly_usd": 4000.0
+      }
+    ],
+    "cost_breakdown_month": "2025-12"
+  },
+  "gaps": [
+    {
+      "area": "traces",
+      "figure_ids": [
+        "traces.ingest_gb_per_day"
+      ],
+      "reason": "permission_denied",
+      "detail": "app key lacks usage_read for ingested_spans",
+      "remediation": "grant usage_read to the application key"
+    }
+  ]
+}

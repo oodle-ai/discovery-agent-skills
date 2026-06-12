@@ -1,8 +1,8 @@
 ---
 name: oodle-discovery
-description: Discover a company's tech stack, observability stack, infrastructure scale, costs, and pain points across all environments. Produces a focused executive-level HTML report with bird's-eye view of environments, observability scale numbers, and costs.
+description: Discover a company's tech stack, observability stack, infrastructure scale, observability costs, and pain points across all environments. Detection is agent-driven; all volume and cost figures are computed by deterministic collector scripts with raw API evidence, merged into a single verifiable executive-level HTML report.
 metadata:
-  version: "1.0.0"
+  version: "2.0.0"
   author: oodle-ai
   repository: https://github.com/oodle-ai/discovery-agent-skills
   tags: oodle,discovery,observability,tech-stack,infrastructure,assessment
@@ -12,19 +12,33 @@ metadata:
 
 # Infrastructure & Observability Discovery
 
-This skill guides the agent through a systematic discovery of a company's tech stack, observability stack, infrastructure scale, costs, and operational pain points. The output is a focused, executive-level HTML report — a bird's-eye view suitable for a buyer or tech champion who needs to quickly understand environments, scale, and costs without operational-level detail.
+This skill guides the agent through a systematic discovery of a company's tech stack, observability stack, infrastructure scale, observability costs, and operational pain points. The output is one self-contained HTML report: an executive summary up top (scannable in under 2 minutes), collapsible per-tool deep dives below, and a provenance appendix linking every measured figure to the raw API response that produced it.
 
 For install instructions, see [README.md](README.md).
+
+## Division of labor (the core rule)
+
+```
+You (the agent)                      Collector scripts (deterministic)
+────────────────────────             ──────────────────────────────────
+detect environments & tools     →    collectors/<tool>/collect.py
+ask qualitative questions       →    compute every volume/cost figure
+write context.json              →    write summary.json + evidence/
+run the report generator        →    report/generate_report.py writes the HTML
+```
+
+**You never compute a reported figure.** No improvised PromQL, no unit conversions, no arithmetic on API responses, no editing the report HTML. Every number in the report comes from a collector's `summary.json`; everything you contribute goes into `context.json` and is rendered as qualitative or "reported — not verified". If a collector fails, the answer is a documented gap — never a substituted estimate.
 
 ## Principles
 
 1. **Non-destructive only.** Never modify, delete, or write to any system. All operations are read-only.
-2. **Rate-limited.** Wait 1-2 seconds between API calls. Never issue more than 5 requests per second to any single endpoint.
-3. **Ask when uncertain.** If information cannot be discovered programmatically, ask the user.
-4. **Plan first.** Always present the discovery plan and get user approval before executing.
-5. **Multi-environment aware.** Discover all environments (dev, staging, prod, etc.) separately.
-6. **Executive-level output.** The report is for a buyer/tech champion. Show aggregate numbers, environment comparisons, and scale — not per-pod or per-node details. Approximations are better than no data.
-7. **Observability scale is critical.** Always measure and report telemetry volumes (metrics samples/sec, log GB/day, trace spans/sec) alongside tool names.
+2. **Deterministic figures.** Volume and cost numbers come only from collector scripts, which capture the raw API responses they used (evidence files).
+3. **Observability costs only.** Discover observability spend (CloudWatch, Datadog, self-hosted stack footprint, licenses). Never query or report account-wide cloud costs. For everything that isn't observability, record broad inventory only (counts, instance families, telemetry-relevant managed services).
+4. **Never silently omit.** Anything that couldn't be collected appears in the report's Coverage & Gaps section with the reason and a remediation.
+5. **Rate-limited.** Wait 1-2 seconds between ad-hoc API calls; collectors throttle themselves.
+6. **Ask when uncertain.** Information that can't be discovered programmatically is asked of the user and recorded as user-reported.
+7. **Plan first.** Always present the discovery plan and get user approval before executing.
+8. **Multi-environment aware.** Discover all environments (dev, staging, prod, etc.) separately.
 
 ## Execution Flow
 
@@ -36,19 +50,33 @@ Before doing anything, present this plan to the user and ask for approval:
 I'll discover your infrastructure and observability setup. Here's my plan:
 
 1. **Environment Detection** — Identify all environments (cloud accounts, k8s clusters, regions)
-2. **Tech Stack Discovery** — Languages, frameworks, databases, message queues, caches
-3. **Infrastructure Discovery** — Cloud provider, compute, networking, storage
+2. **Tech Stack Discovery** — Languages, frameworks, databases, message queues (broad inventory)
+3. **Infrastructure Inventory** — Compute scale and telemetry-relevant managed services (counts only)
 4. **Observability Stack Discovery** — Monitoring, logging, tracing, alerting tools
-5. **Scale Assessment** — Infra scale per environment + observability scale (metrics ingestion rate, log volume, trace throughput, active time series)
-6. **Cost Discovery** — Cloud spend, observability tool costs, license costs
-7. **Pain Points** — Observability-specific: alert fatigue, gaps in coverage, tool sprawl, cost, correlation issues
+5. **Scale & Cost Measurement** — For each detected observability tool I'll run a read-only
+   collector script that queries its usage/billing APIs and saves the raw responses as evidence.
+   Costs are scoped to observability spend only — I will not query your overall cloud bill.
+6. **Pain Points** — Observability-specific: alert fatigue, coverage gaps, tool sprawl, cost
+7. **Report** — A single HTML report; every measured number links to its raw API evidence,
+   and anything that couldn't be collected is listed with the reason.
 
-I will only perform read-only operations. No changes will be made to your systems.
-The output will be a focused executive summary — bird's-eye view of your setup, not operational-level detail.
+All operations are read-only. Collector scripts run locally via `uv run`; nothing is uploaded.
 Shall I proceed?
 ```
 
 Wait for user confirmation before continuing.
+
+### Phase 0.5: Prerequisites
+
+Collector scripts are PEP 723 Python scripts run with `uv`:
+
+```bash
+uv --version 2>/dev/null
+python3 --version 2>/dev/null   # needs >= 3.11
+```
+
+- If `uv` is missing, offer to install it (`curl -LsSf https://astral.sh/uv/install.sh | sh`) or via `pipx install uv` / `brew install uv`. Ask before installing anything.
+- If the user declines or the machine is airgapped, continue in **degraded mode**: skip all collectors, record each skipped one in `context.json.skipped_collectors`, and still generate the report — the volumes/costs will appear as gaps.
 
 ### Phase 1: Environment Detection
 
@@ -57,10 +85,7 @@ Discover all environments by checking these sources in order. Stop each check af
 **Before starting Phase 1, cache commonly used Kubernetes data to avoid redundant API calls:**
 
 ```bash
-# Cache pod list (used across many phases)
 kubectl get pods -A -o json 2>/dev/null > /tmp/discovery-pods.json
-
-# Cache CRD list (used across multiple phases)
 kubectl get crd 2>/dev/null > /tmp/discovery-crds.txt
 ```
 
@@ -69,10 +94,7 @@ Use `/tmp/discovery-pods.json` and `/tmp/discovery-crds.txt` for all subsequent 
 #### 1.1 Kubernetes Clusters
 
 ```bash
-# Check if kubectl is available and configured
 kubectl config get-contexts 2>/dev/null
-
-# For each context, get basic cluster info
 kubectl cluster-info 2>/dev/null
 kubectl get namespaces -o json 2>/dev/null | jq -r '.items[].metadata.name'
 ```
@@ -82,7 +104,6 @@ kubectl get namespaces -o json 2>/dev/null | jq -r '.items[].metadata.name'
 ```bash
 # AWS
 aws sts get-caller-identity 2>/dev/null
-aws organizations list-accounts 2>/dev/null
 aws ec2 describe-regions --query 'Regions[].RegionName' -o text 2>/dev/null
 
 # GCP
@@ -96,51 +117,35 @@ az account list -o json 2>/dev/null
 #### 1.3 Infrastructure-as-Code Detection
 
 ```bash
-# Look for IaC files in the current workspace
 find . -maxdepth 4 -name "*.tf" -o -name "*.tfvars" | head -20
 find . -maxdepth 4 -name "pulumi.*" -o -name "Pulumi.yaml" | head -10
 find . -maxdepth 4 -name "cdk.json" -o -name "serverless.yml" | head -10
 find . -maxdepth 4 -name "docker-compose*.yml" -o -name "docker-compose*.yaml" | head -10
 find . -maxdepth 4 -name "helmfile.yaml" -o -name "Chart.yaml" | head -20
-
-# Parse Terraform files for managed services (databases, queues, monitoring)
-grep -rh 'resource "aws_\|resource "google_\|resource "azurerm_' --include="*.tf" . 2>/dev/null | sed 's/.*resource "\([^"]*\)".*/\1/' | sort | uniq -c | sort -rn | head -20
 ```
 
 #### 1.4 CI/CD Detection
 
 ```bash
-# Check for CI/CD configuration
 ls -la .github/workflows/ 2>/dev/null
 ls -la .gitlab-ci.yml 2>/dev/null
 ls -la Jenkinsfile 2>/dev/null
 ls -la .circleci/ 2>/dev/null
 ls -la .buildkite/ 2>/dev/null
-find . -maxdepth 3 -name "*.yaml" -path "*argocd*" | head -5
-find . -maxdepth 3 -name "*.yaml" -path "*flux*" | head -5
 ```
 
 #### 1.5 Docker & Non-Kubernetes Environments
 
 ```bash
-# Docker Compose services
 docker compose config --services 2>/dev/null || docker-compose config --services 2>/dev/null
 docker ps --format '{{.Names}}\t{{.Image}}\t{{.Status}}' 2>/dev/null | head -20
-
-# System services (bare metal / VM)
 systemctl list-units --type=service --state=running 2>/dev/null | grep -i "postgres\|mysql\|mongo\|redis\|nginx\|haproxy\|kafka\|rabbit\|elastic\|prometheus\|grafana\|docker" | head -20
-
-# Process-based detection (fallback)
-ps aux 2>/dev/null | grep -i "postgres\|mysql\|mongo\|redis\|nginx\|kafka\|rabbit\|elastic\|prometheus\|grafana\|java\|node\|python\|ruby\|go" | grep -v grep | head -20
 ```
 
 #### 1.6 Helm Releases & CRDs
 
 ```bash
-# Helm releases (reveals operator-managed stacks)
 helm list -A -o json 2>/dev/null | jq -r '.[] | "\(.namespace)\t\(.name)\t\(.chart)"' | head -30
-
-# CRDs (from cached data)
 grep -i "monitoring\|observability\|prometheus\|datadog\|elastic\|cert-manager\|istio\|linkerd" /tmp/discovery-crds.txt | head -20
 ```
 
@@ -154,343 +159,146 @@ I couldn't automatically detect all your environments. Could you tell me:
 
 ### Phase 2: Tech Stack Discovery
 
-#### 2.1 Languages & Frameworks
+Broad inventory only — names and counts, suitable for tags in the report.
 
 ```bash
-# Detect from package files
+# Languages & frameworks from package files
 find . -maxdepth 4 \( -name "package.json" -o -name "go.mod" -o -name "requirements.txt" \
   -o -name "Pipfile" -o -name "pyproject.toml" -o -name "Gemfile" -o -name "pom.xml" \
   -o -name "build.gradle" -o -name "Cargo.toml" -o -name "mix.exs" \
   -o -name "*.csproj" -o -name "composer.json" \) 2>/dev/null | head -30
 
-# Read key dependency files to identify frameworks
-# For each found file, read it to identify major frameworks
-```
-
-#### 2.2 Databases
-
-```bash
-# Check Kubernetes for database services
+# Databases / caches / queues running in Kubernetes
 kubectl get services -A -o json 2>/dev/null | jq -r '.items[] | select(.metadata.name | test("postgres|mysql|mongo|redis|elastic|kafka|rabbit|cassandra|dynamo|cockroach|clickhouse")) | "\(.metadata.namespace)/\(.metadata.name)"'
 
-# Check for database connection strings in config
-find . -maxdepth 4 \( -name "*.env" -o -name "*.env.example" -o -name "application*.yml" \
-  -o -name "config*.yaml" \) -exec grep -li "DATABASE\|REDIS\|MONGO\|KAFKA\|RABBIT\|ELASTIC" {} \; 2>/dev/null | head -10
-
-# AWS managed databases
-aws rds describe-db-instances --query 'DBInstances[].{Engine:Engine,Class:DBInstanceClass,ID:DBInstanceIdentifier}' -o table 2>/dev/null
-aws elasticache describe-cache-clusters --query 'CacheClusters[].{Engine:Engine,Type:CacheNodeType,ID:CacheClusterId}' -o table 2>/dev/null
-aws es list-domain-names 2>/dev/null
-```
-
-#### 2.3 Message Queues & Event Streaming
-
-```bash
-# Kafka (from cached pod data)
-jq -r '.items[] | select(.metadata.name | test("kafka|zookeeper|strimzi")) | "\(.metadata.namespace)/\(.metadata.name)"' /tmp/discovery-pods.json | head -10
-
-# AWS
+# Telemetry-relevant managed services (counts only — these are integration
+# candidates for Oodle onboarding)
+aws rds describe-db-instances --query 'length(DBInstances)' 2>/dev/null
+aws elasticache describe-cache-clusters --query 'length(CacheClusters)' 2>/dev/null
+aws es list-domain-names 2>/dev/null | jq '.DomainNames | length'
+aws eks list-clusters -o json 2>/dev/null | jq '.clusters | length'
+aws kafka list-clusters --query 'length(ClusterInfoList)' 2>/dev/null
+aws lambda list-functions --query 'length(Functions)' 2>/dev/null
 aws sqs list-queues 2>/dev/null | jq '.QueueUrls | length'
-aws sns list-topics 2>/dev/null | jq '.Topics | length'
-aws kinesis list-streams 2>/dev/null
-
-# RabbitMQ (from cached pod data)
-jq '[.items[] | select(.metadata.labels.app == "rabbitmq")] | length' /tmp/discovery-pods.json
+gcloud container clusters list --format=json 2>/dev/null | jq 'length'
 ```
 
-### Phase 3: Infrastructure Discovery
+### Phase 3: Infrastructure Inventory
 
-**Note:** Collect per-node and per-instance data here for internal analysis, but only report **aggregates** in the final HTML report (total nodes, total vCPU, total memory, instance type families). Do NOT list individual node IPs or per-node utilization in the report.
+Aggregates only: total nodes, vCPU, memory, instance-type families per environment. Do NOT collect per-resource detail, individual node IPs, or anything cost-related — this phase exists to size the environment for onboarding, not to audit it.
 
-#### 3.1 Compute
+If any kubectl context exists, run the k8s inventory collector — do not sum node capacities yourself:
 
 ```bash
-# Kubernetes nodes
-kubectl get nodes -o json 2>/dev/null | jq '[.items[] | {name: .metadata.name, instance_type: .metadata.labels["node.kubernetes.io/instance-type"], capacity: .status.capacity}]'
-
-# AWS EC2
-aws ec2 describe-instances --query 'Reservations[].Instances[].{Type:InstanceType,State:State.Name,AZ:Placement.AvailabilityZone}' -o table 2>/dev/null
-
-# AWS EKS
-aws eks list-clusters -o json 2>/dev/null
-
-# GCP GKE
-gcloud container clusters list --format=json 2>/dev/null
+uv run collectors/k8s/collect.py --all-contexts --output-dir ./discovery-output/k8s
+# or, for selected clusters:
+uv run collectors/k8s/collect.py --context prod-eks --context stg-eks \
+  --output-dir ./discovery-output/k8s
 ```
 
-#### 3.2 Networking
+It measures nodes, vCPU, memory (GiB), and deployment counts per context with kubectl evidence, and its summary.json feeds the report's Compute/Services cards directly. For monitored-host counts, vendor collectors also contribute (e.g. the Datadog collector's `hosts.count` from the hosts API — preferred on Datadog-centric environments since it covers non-k8s hosts too).
 
-```bash
-# Load balancers
-kubectl get services -A --field-selector spec.type=LoadBalancer -o json 2>/dev/null | jq '[.items[] | {name: .metadata.name, ns: .metadata.namespace}]'
-aws elbv2 describe-load-balancers --query 'LoadBalancers[].{Name:LoadBalancerName,Type:Type,Scheme:Scheme}' -o table 2>/dev/null
-
-# Ingress
-kubectl get ingress -A -o json 2>/dev/null | jq '[.items[] | {name: .metadata.name, ns: .metadata.namespace, hosts: [.spec.rules[].host]}]'
-```
-
-#### 3.3 Storage
-
-```bash
-# Persistent volumes
-kubectl get pv -o json 2>/dev/null | jq '[.items[] | {name: .metadata.name, capacity: .spec.capacity.storage, class: .spec.storageClassName}]'
-
-# AWS S3
-aws s3api list-buckets --query 'Buckets[].Name' -o json 2>/dev/null | jq 'length'
-
-# AWS EBS
-aws ec2 describe-volumes --query 'Volumes[].{Size:Size,Type:VolumeType,State:State}' -o table 2>/dev/null | head -20
-```
+Environment *naming/classification* (which cluster is prod vs staging) is yours: record it in `context.json.environments[]`, using the collector's per-context inventory for the numbers.
 
 ### Phase 4: Observability Stack Discovery
 
-#### 4.1 Monitoring & Metrics
+#### 4.1 Detection
 
 ```bash
-# Check for monitoring pods (from cached pod data)
+# Monitoring/metrics pods (from cached pod data)
 jq -r '.items[] | select(.metadata.name | test("prometheus|thanos|mimir|cortex|victoriametrics|vmagent|datadog|newrelic|nri-|dynatrace|oneagent|splunk|grafana|honeycomb|lightstep")) | "\(.metadata.namespace)/\(.metadata.name)"' /tmp/discovery-pods.json | head -20
 
-# Check DaemonSets (agents often run as DaemonSets)
+# Agents as DaemonSets
 kubectl get daemonsets -A -o json 2>/dev/null | jq -r '.items[] | select(.metadata.name | test("datadog|newrelic|dynatrace|oneagent|splunk|fluentd|fluent-bit|node-exporter|filebeat")) | "\(.metadata.namespace)/\(.metadata.name)"'
 
 # Helm-based detection (catches operator-managed stacks)
-helm list -A -o json 2>/dev/null | jq -r '.[] | select(.chart | test("prometheus|datadog|newrelic|dynatrace|grafana|loki|tempo|splunk|elastic|victoria")) | "\(.namespace)\t\(.name)\t\(.chart)"'
+helm list -A -o json 2>/dev/null | jq -r '.[] | select(.chart | test("prometheus|datadog|newrelic|dynatrace|grafana|loki|tempo|splunk|elastic|victoria|mimir")) | "\(.namespace)\t\(.name)\t\(.chart)"'
 
 # CRD-based detection (from cached data)
-grep -i "monitoring.coreos.com\|datadoghq.com\|newrelic.com\|dynatrace.com" /tmp/discovery-crds.txt | head -10
+grep -i "monitoring.coreos.com\|datadoghq.com\|newrelic.com\|dynatrace.com\|opentelemetry" /tmp/discovery-crds.txt | head -10
 
-# Check for CloudWatch / Stackdriver
-aws cloudwatch list-metrics --query 'Metrics | length(@)' 2>/dev/null
-aws cloudwatch describe-alarms --query 'MetricAlarms | length(@)' 2>/dev/null
-```
+# Logging stacks (from cached pod data)
+jq -r '.items[] | select(.metadata.name | test("fluentd|fluent-bit|logstash|loki|vector|filebeat|elasticsearch|opensearch|kibana")) | "\(.metadata.namespace)/\(.metadata.name)"' /tmp/discovery-pods.json | head -10
 
-#### 4.2 Logging
-
-```bash
-# Check for logging stacks (from cached pod data)
-jq -r '.items[] | select(.metadata.name | test("fluentd|fluent-bit|logstash|loki|vector|filebeat")) | "\(.metadata.namespace)/\(.metadata.name)"' /tmp/discovery-pods.json | head -10
-
-# Check for Elasticsearch/OpenSearch (from cached pod data)
-jq -r '.items[] | select(.metadata.name | test("elasticsearch|opensearch|kibana")) | "\(.metadata.namespace)/\(.metadata.name)"' /tmp/discovery-pods.json | head -10
-
-# AWS CloudWatch Logs
-aws logs describe-log-groups --query 'logGroups | length(@)' 2>/dev/null
-```
-
-#### 4.3 Tracing
-
-```bash
-# Check for tracing tools (from cached pod data)
+# Tracing (from cached pod data)
 jq -r '.items[] | select(.metadata.name | test("jaeger|zipkin|tempo|otel|opentelemetry|honeycomb|lightstep")) | "\(.metadata.namespace)/\(.metadata.name)"' /tmp/discovery-pods.json | head -10
 
-# OpenTelemetry Collector (from cached pod data)
-jq '[.items[] | select(.metadata.labels["app.kubernetes.io/name"] == "opentelemetry-collector")] | length' /tmp/discovery-pods.json
-
-# Check for OTel CRDs (from cached data)
-grep -i "opentelemetry\|instrumentation" /tmp/discovery-crds.txt | head -5
-```
-
-#### 4.4 Alerting & On-Call
-
-```bash
-# PagerDuty / OpsGenie / VictorOps integrations
-kubectl get configmaps -A -o json 2>/dev/null | jq -r '.items[] | select(.data | tostring | test("pagerduty|opsgenie|victorops|incident")) | "\(.metadata.namespace)/\(.metadata.name)"' | head -5
-
-# AlertManager (from cached pod data)
+# Alerting & on-call
 jq -r '.items[] | select(.metadata.name | test("alertmanager")) | "\(.metadata.namespace)/\(.metadata.name)"' /tmp/discovery-pods.json | head -5
+kubectl get configmaps -A -o json 2>/dev/null | jq -r '.items[] | select(.data | tostring | test("pagerduty|opsgenie|victorops|incident")) | "\(.metadata.namespace)/\(.metadata.name)"' | head -5
 ```
 
-### Phase 5: Scale Assessment
+#### 4.2 Collector routing table
 
-**Goal:** Produce high-level scale numbers suitable for an executive summary. Focus on aggregate totals across environments, not per-pod or per-node breakdowns.
+For each detection below, plan to run the matching collector in Phase 5. A tool can match more than one row (e.g., Datadog SaaS + self-hosted Prometheus).
 
-#### 5.1 Infrastructure Scale (per environment)
+| Detected | Collector |
+|---|---|
+| any kubectl context | `collectors/k8s/collect.py` (inventory; run in Phase 3) |
+| prometheus / thanos / victoriametrics / vmagent pods, `monitoring.coreos.com` CRDs, loki / tempo pods | `collectors/promstack/collect.py` *(planned — record as skipped until shipped)* |
+| mimir / cortex pods or charts | `collectors/mimir/collect.py` *(planned)* |
+| elasticsearch / kibana pods, AWS ES domains | `collectors/elasticsearch/collect.py` *(planned)* |
+| opensearch pods, AWS OpenSearch/AOSS domains | `collectors/opensearch/collect.py` *(planned)* |
+| datadog agent/operator pods, DD CRDs, or the user says they use Datadog | `collectors/datadog/collect.py` |
+| `aws` CLI authenticated (CloudWatch is in use by default on AWS) | `collectors/cloudwatch/collect.py` *(planned)* |
+| `gcloud` CLI authenticated | `collectors/gcp/collect.py` *(planned)* |
+
+For rows marked *(planned)*, the collector does not exist yet in this version of the skill: record the tool in `context.json.skipped_collectors` with reason "collector not yet available", and ask the user for representative numbers instead (recorded as `user_reported`).
+
+### Phase 5: Scale & Cost Measurement (collectors)
+
+#### 5.1 Infrastructure aggregates
+
+Measured by the k8s collector in Phase 3 (`./discovery-output/k8s/summary.json`). Your job here is only classification: copy the per-context numbers from its inventory into `context.json.environments[]` with the right env labels (prod/staging/dev). Do not recompute totals — the report's cards read the collector figures directly.
+
+#### 5.2 Observability volumes & costs (collectors only)
+
+For each collector selected in Phase 4.2:
+
+1. Ask the user for the credentials it needs (e.g., Datadog API + application key) and pass them via environment variables — never write credentials to files.
+2. Run it with a per-tool output directory:
 
 ```bash
-# For each cluster/context, collect aggregate numbers only
-kubectl get nodes --no-headers 2>/dev/null | wc -l
-kubectl get pods -A --no-headers 2>/dev/null | wc -l
-kubectl get namespaces --no-headers 2>/dev/null | wc -l
-
-# Total compute capacity (aggregate)
-kubectl get nodes -o json 2>/dev/null | jq '{
-  total_nodes: (.items | length),
-  total_vcpu: ([.items[].status.capacity.cpu | tonumber] | add),
-  total_memory_gi: ([.items[].status.capacity.memory | rtrimstr("Ki") | tonumber / 1048576] | add | floor),
-  instance_types: [.items[].metadata.labels["node.kubernetes.io/instance-type"]] | unique
-}'
-
-# Average utilization (single summary line)
-kubectl top nodes --no-headers 2>/dev/null | awk '{cpu+=$3; mem+=$5; n++} END {printf "Avg CPU: %d%%, Avg Memory: %d%%\n", cpu/n, mem/n}'
+mkdir -p ./discovery-output
+DD_API_KEY=... DD_APP_KEY=... uv run collectors/datadog/collect.py \
+  --site us1 --lookback 30d --output-dir ./discovery-output/datadog
 ```
 
-#### 5.2 Observability Volume Estimation
+3. Read the collector's stdout. It ends with a figures/gaps count. Do not parse evidence files or recompute anything from them.
+4. If a collector exits non-zero or errors: capture stderr, retry once, and if it still fails record it in `context.json.skipped_collectors` with the error as the reason. **Never substitute your own estimate for a failed collector.**
 
-This is the most critical section. The goal is to produce concrete volume numbers:
-- **Active time series** (total unique metric series)
-- **Metrics ingestion rate** (samples/sec)
-- **Log volume** (GB/day)
-- **Trace volume** (GB/day or spans/sec)
+Hard rules for this phase:
 
-**Strategy:** Users typically have MCP servers or CLI tools connected to their observability stack (e.g., Datadog CLI, Grafana Cloud CLI, New Relic CLI, or custom MCP integrations). Use these as the **primary** method to query volume data. Query patterns over the **last 7 days** to get a representative average — not just a point-in-time snapshot.
+- Do not write your own queries against observability backends (no PromQL, no `_cat` APIs, no usage API calls). The collectors own those.
+- Do not port-forward to in-cluster services yourself; collectors that need it do it internally with proper cleanup.
+- If the user volunteers numbers ("we do about 200GB of logs a day"), record them in `context.json.user_reported` — they never become figures.
 
-**Step 1: Identify available observability query tools**
+#### 5.3 If no collector covers a detected tool
 
-Check what MCP servers, CLIs, or APIs the user has available:
-```
-I need to query your observability stack for volume numbers. Do you have any of the following available?
-
-- MCP server connected to your metrics/logs/traces backend (e.g., Datadog MCP, Grafana MCP, custom MCP)
-- CLI tools (e.g., `datadog`, `grafana-cli`, `newrelic`, `logcli`, `promtool`)
-- Direct API access to your observability backend (Prometheus, Grafana Cloud, Datadog, etc.)
-
-Which tools or integrations can I use to query telemetry volume?
-```
-
-**Step 2: Query volume over last 7 days via MCP/CLI (preferred)**
-
-Use whatever tool the user has available. The key queries to run:
+Ask the user for representative numbers (last 7–30 days), and record their answers verbatim in `context.json.user_reported`:
 
 ```
-# These are example queries — adapt to the user's specific tool/API:
-
-# Active time series (7-day average)
-# Prometheus/Thanos/Mimir: avg_over_time(prometheus_tsdb_head_series[7d])
-# Datadog: metrics.list with count
-# Grafana Cloud: /api/v1/query?query=sum(scrape_samples_scraped)
-
-# Metrics ingestion rate (7-day average samples/sec)
-# Prometheus: avg_over_time(rate(prometheus_tsdb_head_samples_appended_total[1h])[7d:1h])
-# VictoriaMetrics: avg_over_time(rate(vm_rows_inserted_total[1h])[7d:1h])
-
-# Log volume (average GB/day over last 7 days)
-# Loki: sum(bytes_over_time({job=~".+"}[7d])) / 7 / 1e9
-# Elasticsearch: _cat/indices?v&s=store.size:desc (sum store.size, divide by retention days)
-# Datadog: logs estimated usage API
-# CloudWatch: GetMetricData for IncomingBytes
-
-# Trace volume (average GB/day or spans/sec over last 7 days)
-# Tempo: tempo_ingester_bytes_received_total rate over 7d
-# Jaeger: jaeger_collector_spans_received_total rate over 7d
-# Datadog: trace estimated usage API
+I need a few numbers for <tool>, which I can't measure automatically. Approximations are fine:
+1. Active time series / metrics ingestion rate?
+2. Log volume (GB/day)?
+3. Trace volume (GB/day or spans/sec)?
+4. Data retention for metrics / logs / traces?
 ```
 
-**Step 3: Fallback — query via port-forward to in-cluster metrics**
+### Phase 6: Observability Cost Discovery
 
-If no MCP/CLI is available, fall back to direct Prometheus-compatible queries:
+**Scope: observability spend only. Never query, estimate, or report account-wide cloud costs.**
 
-```bash
-# Detect which metrics endpoint is available
-METRICS_SVC=$(kubectl get svc -A -o json 2>/dev/null | jq -r '.items[] | select(.metadata.name | test("prometheus|vmagent|vmselect|thanos-query|mimir-query")) | "\(.metadata.namespace)/\(.metadata.name):\(.spec.ports[0].port)"' | head -1)
-if [ -n "$METRICS_SVC" ]; then
-  NS=$(echo $METRICS_SVC | cut -d/ -f1)
-  SVC_PORT=$(echo $METRICS_SVC | cut -d/ -f2)
-  kubectl port-forward -n $NS svc/${SVC_PORT%:*} 9090:${SVC_PORT#*:} &
-  PF_PID=$!
-  sleep 3
+- Measured observability spend comes from collectors (Datadog estimated cost; CloudWatch via Cost Explorer scoped to `SERVICE=AmazonCloudWatch` once that collector ships; GCP Monitoring/Logging once that collector ships).
+- For vendors without a collector, ask the user and record as `user_reported` with `area: "cost"`:
 
-  # Active time series (current)
-  curl -s 'http://localhost:9090/api/v1/query?query=prometheus_tsdb_head_series' 2>/dev/null | jq '.data.result[0].value[1]'
-
-  # Metrics ingestion rate — 7-day average (samples/sec)
-  curl -s 'http://localhost:9090/api/v1/query?query=avg_over_time(rate(prometheus_tsdb_head_samples_appended_total[1h])[7d:1h])' 2>/dev/null | jq '.data.result[0].value[1]'
-  # Alternative for VictoriaMetrics
-  curl -s 'http://localhost:9090/api/v1/query?query=avg_over_time(rate(vm_rows_inserted_total[1h])[7d:1h])' 2>/dev/null | jq '.data.result[0].value[1]'
-
-  # Scrape targets count
-  curl -s 'http://localhost:9090/api/v1/query?query=count(up)' 2>/dev/null | jq '.data.result[0].value[1]'
-
-  # Log volume if Loki metrics are exposed via Prometheus
-  curl -s 'http://localhost:9090/api/v1/query?query=sum(rate(loki_distributor_bytes_received_total[1h]))*86400/1e9' 2>/dev/null | jq '.data.result[0].value[1]'
-
-  # Trace ingestion rate if Tempo/OTel metrics are exposed
-  curl -s 'http://localhost:9090/api/v1/query?query=sum(rate(tempo_distributor_bytes_received_total[1h]))*86400/1e9' 2>/dev/null | jq '.data.result[0].value[1]'
-  curl -s 'http://localhost:9090/api/v1/query?query=sum(rate(otelcol_receiver_accepted_spans_total[1h]))' 2>/dev/null | jq '.data.result[0].value[1]'
-
-  kill $PF_PID 2>/dev/null
-fi
+```
+A couple of cost questions, scoped to observability only:
+- What do you pay monthly/annually for observability vendors (Datadog, Splunk, New Relic, Grafana Cloud, ...)?
+- Any committed contracts or credits worth noting?
 ```
 
-**Step 4: Estimate from resource allocations (last resort)**
-
-If neither MCP/CLI nor direct queries are available, estimate from infrastructure:
-
-```bash
-# Log pipeline pods — resource requests are a rough proxy for throughput
-jq -r '.items[] | select(.metadata.name | test("log-receiver|vector|fluentd|fluent-bit|logstash|loki-write")) | "\(.metadata.namespace)/\(.metadata.name) cpu:\(.spec.containers[0].resources.requests.cpu // "unknown") mem:\(.spec.containers[0].resources.requests.memory // "unknown")"' /tmp/discovery-pods.json | head -10
-
-# Trace collector pods
-jq -r '.items[] | select(.metadata.name | test("otel|opentelemetry|jaeger|tempo")) | "\(.metadata.namespace)/\(.metadata.name) cpu:\(.spec.containers[0].resources.requests.cpu // "unknown") mem:\(.spec.containers[0].resources.requests.memory // "unknown")"' /tmp/discovery-pods.json | head -10
-
-# Observability storage (PVCs)
-kubectl get pvc -A -o json 2>/dev/null | jq '[.items[] | select(.metadata.name | test("prometheus|thanos|mimir|loki|tempo|elastic|opensearch|clickhouse|vector|grafana|victoria")) | .spec.resources.requests.storage | rtrimstr("Gi") | tonumber] | {total_obs_storage_gi: add, count: length}'
-
-# S3 buckets related to observability (if AWS access available)
-aws s3api list-buckets --query 'Buckets[].Name' -o json 2>/dev/null | jq '[.[] | select(test("metric|log|trace|thanos|loki|tempo|observ"))]'
-```
-
-**Important:** Always report the numbers you find, even if approximate. Use `~` prefix for estimates (e.g., "~50K samples/sec", "~150 GB/day logs"). Approximate numbers are far more useful than no numbers.
-
-#### 5.3 Application Scale
-
-```bash
-# Total request rate across services (if metrics endpoint available)
-# Set up a fresh port-forward if needed
-METRICS_SVC=$(kubectl get svc -A -o json 2>/dev/null | jq -r '.items[] | select(.metadata.name | test("prometheus|vmagent|vmselect|thanos-query|mimir-query")) | "\(.metadata.namespace)/\(.metadata.name):\(.spec.ports[0].port)"' | head -1)
-if [ -n "$METRICS_SVC" ]; then
-  NS=$(echo $METRICS_SVC | cut -d/ -f1)
-  SVC_PORT=$(echo $METRICS_SVC | cut -d/ -f2)
-  kubectl port-forward -n $NS svc/${SVC_PORT%:*} 9090:${SVC_PORT#*:} &
-  PF_PID=$!
-  sleep 3
-  curl -s 'http://localhost:9090/api/v1/query?query=sum(rate(http_requests_total[5m]))' 2>/dev/null | jq '.data.result[0].value[1]'
-  kill $PF_PID 2>/dev/null
-fi
-
-# Helm releases count (proxy for service count)
-helm list -A --no-headers 2>/dev/null | wc -l
-
-# Deployments count
-kubectl get deployments -A --no-headers 2>/dev/null | wc -l
-```
-
-#### 5.4 If scale data is not discoverable programmatically
-
-Ask the user:
-```
-I need a few numbers to complete the scale picture. Even rough approximations based on your last 7 days are helpful:
-
-1. **Active time series** — How many unique metric series does your system track?
-2. **Metrics ingestion** — Approximate samples/sec ingested?
-3. **Log volume** — Approximate GB/day of logs ingested (average over last week)?
-4. **Trace volume** — Approximate GB/day or spans/sec (average over last week)?
-5. **Request rate** — Approximate requests/sec across all services?
-6. **Data retention** — How long do you retain metrics / logs / traces?
-```
-
-### Phase 6: Cost Discovery
-
-Costs are often not programmatically accessible. Use this approach:
-
-1. **Check for cost tools:**
-```bash
-# Kubecost / OpenCost (from cached pod data)
-jq -r '.items[] | select(.metadata.name | test("kubecost|opencost")) | "\(.metadata.namespace)/\(.metadata.name)"' /tmp/discovery-pods.json
-
-# AWS Cost Explorer (requires permissions)
-# Use portable date calculation (works on both macOS and Linux)
-START_DATE=$(python3 -c "import datetime; print((datetime.date.today() - datetime.timedelta(days=30)).isoformat())" 2>/dev/null || date -d '30 days ago' +%Y-%m-%d 2>/dev/null || date -v-30d +%Y-%m-%d 2>/dev/null)
-END_DATE=$(date +%Y-%m-%d)
-aws ce get-cost-and-usage --time-period Start=$START_DATE,End=$END_DATE --granularity MONTHLY --metrics BlendedCost --group-by Type=DIMENSION,Key=SERVICE 2>/dev/null | jq '.ResultsByTime[0].Groups[] | {Service: .Keys[0], Cost: .Metrics.BlendedCost.Amount}' | head -40
-```
-
-2. **If costs cannot be discovered, ask the user:**
-```
-I couldn't access cost data programmatically. Could you share approximate monthly costs for:
-- Cloud infrastructure (compute, storage, networking)?
-- Observability tools (monitoring, logging, tracing)?
-- Any other significant SaaS/license costs related to infrastructure?
-```
+Do not ask about compute, database, or total cloud spend.
 
 ### Phase 7: Pain Points Discovery
 
@@ -501,404 +309,101 @@ Based on what I've found, I have a few questions about observability pain points
 
 1. **Alert fatigue** — How many alerts do you receive per day/week? Are most actionable?
 2. **Observability gaps** — Are there services or systems with insufficient monitoring, logging, or tracing?
-3. **Troubleshooting time** — How long does it typically take to identify root cause of incidents? Do you have the right signals?
-4. **Observability cost** — Are observability costs growing faster than your infrastructure? Any vendor lock-in concerns?
-5. **Tool sprawl** — Do you find yourself switching between too many observability tools during incidents?
-6. **Data retention** — Are you satisfied with how long you retain metrics/logs/traces? Any compliance requirements unmet?
+3. **Troubleshooting time** — How long does it typically take to identify root cause of incidents?
+4. **Observability cost** — Are observability costs growing faster than your infrastructure? Vendor lock-in concerns?
+5. **Tool sprawl** — Do you switch between too many observability tools during incidents?
+6. **Data retention** — Are you satisfied with retention for metrics/logs/traces? Compliance requirements unmet?
 7. **Correlation gaps** — Can you easily correlate metrics, logs, and traces for a single request?
 ```
 
-### Phase 8: Generate HTML Report
+Keep the top 3-5 for the report.
 
-After collecting all data, generate a focused executive-level HTML report. The report must be:
-- Self-contained (single HTML file, inline CSS, no external dependencies)
-- Professional and visually clean
-- **Concise** — a bird's-eye view, not an operational runbook. Scannable in under 2 minutes.
-- Tailored to what was actually discovered (omit sections with no data)
-- Opened automatically in the user's browser
+### Phase 8: Generate the Report
 
-**Do NOT include:** per-pod tables, per-node resource breakdowns, ASCII architecture diagrams, service replica counts, individual PV listings, or any detail that belongs in an operational dashboard rather than an executive summary.
+#### 8.1 Write context.json
 
-Use this command to open the report:
+Write `./discovery-output/context.json` with everything qualitative you discovered. It must validate against `schemas/context.schema.json`. Shape:
+
+```json
+{
+  "schema_version": "1.0",
+  "company": "<company name if known>",
+  "generated_by": "<your platform, e.g. claude-code>",
+  "team_size": "<user-reported or null>",
+  "environments": [
+    {"name": "production", "kind": "prod", "cloud": "aws", "region": "us-east-1",
+     "cluster": "prod-eks", "nodes": 24, "services": 31, "vcpu": 192, "memory_gi": 768}
+  ],
+  "tech_stack": {"languages": ["Go"], "databases": ["PostgreSQL"], "messaging": ["Kafka"],
+                 "infra": ["Terraform", "Helm"], "other": []},
+  "infra_inventory": {"kubernetes_clusters": 2, "total_nodes": 30, "total_services": 59,
+                      "instance_families": ["m6i"], "regions": ["us-east-1"],
+                      "managed_services": [{"type": "RDS", "count": 4}]},
+  "observability_stack": [
+    {"signal": "metrics", "tools": ["Datadog"]},
+    {"signal": "logs", "tools": ["Datadog Logs"]},
+    {"signal": "alerting", "tools": ["Datadog Monitors", "PagerDuty"]}
+  ],
+  "pain_points": [{"title": "...", "detail": "...", "recommendation": "..."}],
+  "user_reported": [{"label": "Splunk contract", "value": "$200K/yr", "area": "cost"}],
+  "skipped_collectors": [{"tool": "cloudwatch", "reason": "aws CLI not configured"}],
+  "narrative": {"overview": "1-3 sentence executive overview."}
+}
+```
+
+Notes:
+- Numbers in `environments[]`/`infra_inventory` are inventory facts you gathered in Phases 1–3; they render as "reported".
+- Keep narrative paragraphs short and factual; they are rendered verbatim.
+
+#### 8.2 Run the generator
+
 ```bash
-# Save to current directory for easy access
-REPORT_PATH="./discovery-report.html"
-
-# macOS
-open "$REPORT_PATH"
-
-# Linux
-xdg-open "$REPORT_PATH"
-
-# WSL
-wslview "$REPORT_PATH"
-
-# Fallback
-echo "Report saved to: $(pwd)/discovery-report.html"
+uv run report/generate_report.py \
+  --context ./discovery-output/context.json \
+  --summaries ./discovery-output/*/summary.json \
+  --out ./discovery-report.html \
+  --strict
 ```
 
-## HTML Report Structure
+If no collector ran (degraded mode), omit `--summaries` entirely — the generator still produces the report from `context.json`, with every skipped collector listed in Coverage & Gaps. Tell the user the report contains only reported (unverified) data in that case.
 
-The report is designed for a **buyer or tech champion** who needs a bird's-eye view of their environment. It should be scannable in under 2 minutes.
+**Hard rules:**
+- Figures come ONLY from `summary.json` files. Never edit `discovery-report.html`. Never transcribe, recompute, convert units of, or round any collector figure in anything you write.
+- Do not regenerate or hand-write any HTML. If a section looks wrong, fix `context.json` or re-run a collector, then re-run the generator.
 
-**Report philosophy:**
-- Lead with aggregate numbers and environment-level comparisons
-- Show scale in human-readable terms (e.g., "~50K samples/sec", "~200 GB/day logs")
-- Approximate numbers are more useful than no numbers
-- Omit per-pod, per-node, per-service breakdowns — those belong in operational dashboards, not a discovery report
-- Focus on: environments, tech stack summary, observability scale, costs, and pain points
-- Each section should fit on one screen without scrolling
+Open the report:
 
-Generate the report using the template structure below. Adapt sections based on what was discovered — omit empty sections, expand sections with rich data.
-
-```html
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Infrastructure & Observability Discovery Report</title>
-<style>
-  :root {
-    --primary: #1a1a2e;
-    --accent: #4f46e5;
-    --bg: #f8fafc;
-    --card: #ffffff;
-    --text: #1e293b;
-    --text-muted: #64748b;
-    --border: #e2e8f0;
-    --success: #10b981;
-    --warning: #f59e0b;
-  }
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-  body {
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    background: var(--bg);
-    color: var(--text);
-    line-height: 1.6;
-  }
-  .header {
-    background: var(--primary);
-    color: white;
-    padding: 3rem 2rem;
-    text-align: center;
-  }
-  .header h1 { font-size: 2rem; margin-bottom: 0.5rem; }
-  .header p { color: #94a3b8; font-size: 1.1rem; }
-  .container { max-width: 1100px; margin: 0 auto; padding: 2rem; }
-  .summary-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-    gap: 1rem;
-    margin: 2rem 0;
-  }
-  .summary-card {
-    background: var(--card);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    padding: 1.25rem;
-    text-align: center;
-  }
-  .summary-card .value {
-    font-size: 1.75rem;
-    font-weight: 700;
-    color: var(--accent);
-  }
-  .summary-card .label {
-    color: var(--text-muted);
-    font-size: 0.8rem;
-    margin-top: 0.25rem;
-  }
-  .section {
-    background: var(--card);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    padding: 1.75rem;
-    margin: 1.25rem 0;
-  }
-  .section h2 {
-    font-size: 1.3rem;
-    margin-bottom: 0.75rem;
-    color: var(--primary);
-    border-bottom: 2px solid var(--accent);
-    padding-bottom: 0.5rem;
-  }
-  table {
-    width: 100%;
-    border-collapse: collapse;
-    margin: 0.75rem 0;
-    font-size: 0.9rem;
-  }
-  th, td {
-    padding: 0.6rem 0.75rem;
-    text-align: left;
-    border-bottom: 1px solid var(--border);
-  }
-  th {
-    background: var(--bg);
-    font-weight: 600;
-    color: var(--text-muted);
-    text-transform: uppercase;
-    font-size: 0.75rem;
-    letter-spacing: 0.05em;
-  }
-  .tag {
-    display: inline-block;
-    padding: 0.2rem 0.6rem;
-    border-radius: 9999px;
-    font-size: 0.75rem;
-    font-weight: 500;
-    margin: 0.125rem;
-  }
-  .tag-blue { background: #dbeafe; color: #1d4ed8; }
-  .tag-green { background: #d1fae5; color: #065f46; }
-  .tag-purple { background: #ede9fe; color: #5b21b6; }
-  .tag-orange { background: #ffedd5; color: #9a3412; }
-  .tag-red { background: #fee2e2; color: #991b1b; }
-  .tag-gray { background: #f1f5f9; color: #475569; }
-  .pain-point {
-    border-left: 4px solid var(--warning);
-    padding: 0.75rem 1.25rem;
-    margin: 0.5rem 0;
-    background: #fffbeb;
-    border-radius: 0 8px 8px 0;
-  }
-  .recommendation {
-    border-left: 4px solid var(--success);
-    padding: 0.75rem 1.25rem;
-    margin: 0.5rem 0;
-    background: #ecfdf5;
-    border-radius: 0 8px 8px 0;
-  }
-  .env-badge {
-    display: inline-block;
-    padding: 0.2rem 0.6rem;
-    border-radius: 4px;
-    font-size: 0.75rem;
-    font-weight: 600;
-    text-transform: uppercase;
-  }
-  .env-prod { background: #fee2e2; color: #991b1b; }
-  .env-staging { background: #fef3c7; color: #92400e; }
-  .env-dev { background: #d1fae5; color: #065f46; }
-  .footer {
-    text-align: center;
-    padding: 2rem;
-    color: var(--text-muted);
-    font-size: 0.85rem;
-  }
-  .footer a { color: var(--accent); text-decoration: none; }
-  ul { padding-left: 1.5rem; margin: 0.5rem 0; }
-  li { margin: 0.25rem 0; }
-</style>
-</head>
-<body>
-<div class="header">
-  <h1>Infrastructure & Observability Discovery Report</h1>
-  <p>Generated on {{DATE}} for {{COMPANY/PROJECT}}</p>
-</div>
-<div class="container">
-
-  <!-- Executive Summary — the most important section. Key numbers at a glance. -->
-  <div class="summary-grid">
-    <div class="summary-card">
-      <div class="value">{{N}}</div>
-      <div class="label">Environments</div>
-    </div>
-    <div class="summary-card">
-      <div class="value">{{N}}</div>
-      <div class="label">Services</div>
-    </div>
-    <div class="summary-card">
-      <div class="value">{{N}} nodes</div>
-      <div class="label">Compute (total)</div>
-    </div>
-    <div class="summary-card">
-      <div class="value">~{{N}}/sec</div>
-      <div class="label">Metrics Ingestion</div>
-    </div>
-    <div class="summary-card">
-      <div class="value">~{{N}} GB/day</div>
-      <div class="label">Log Volume</div>
-    </div>
-    <div class="summary-card">
-      <div class="value">~{{N}}/sec</div>
-      <div class="label">Trace Spans</div>
-    </div>
-    <div class="summary-card">
-      <div class="value">${{N}}/mo</div>
-      <div class="label">Est. Cloud Spend</div>
-    </div>
-    <div class="summary-card">
-      <div class="value">{{N}}</div>
-      <div class="label">Team Size</div>
-    </div>
-  </div>
-
-  <!-- Section: Environments — one row per environment, keep it compact -->
-  <div class="section">
-    <h2>Environments</h2>
-    <table>
-      <thead>
-        <tr><th>Environment</th><th>Cloud / Region</th><th>Cluster</th><th>Nodes</th><th>Services</th></tr>
-      </thead>
-      <tbody>
-        <!-- One row per environment. Show aggregate node/service count per env. -->
-        <tr>
-          <td><span class="env-badge env-prod">PROD</span></td>
-          <td>{{cloud}} {{region}}</td>
-          <td>{{cluster_name}}</td>
-          <td>{{N}}</td>
-          <td>{{N}}</td>
-        </tr>
-        <!-- Repeat for each environment -->
-      </tbody>
-    </table>
-  </div>
-
-  <!-- Section: Tech Stack — tags only, no per-service tables -->
-  <div class="section">
-    <h2>Tech Stack</h2>
-    <p><strong>Languages:</strong>
-      <span class="tag tag-blue">{{lang}}</span>
-      <!-- tags for each language -->
-    </p>
-    <p style="margin-top: 0.5rem;"><strong>Databases:</strong>
-      <span class="tag tag-green">{{db}}</span>
-      <!-- tags for each database -->
-    </p>
-    <p style="margin-top: 0.5rem;"><strong>Infra & IaC:</strong>
-      <span class="tag tag-purple">{{tool}}</span>
-      <!-- tags for IaC, CI/CD, orchestration -->
-    </p>
-  </div>
-
-  <!-- Section: Observability Stack — what tools, NOT per-pod details -->
-  <div class="section">
-    <h2>Observability Stack</h2>
-    <table>
-      <thead>
-        <tr><th>Signal</th><th>Tools</th><th>Scale</th></tr>
-      </thead>
-      <tbody>
-        <tr>
-          <td><strong>Metrics</strong></td>
-          <td>{{tools as tags or comma-separated}}</td>
-          <td>~{{N}} samples/sec, {{N}} active series</td>
-        </tr>
-        <tr>
-          <td><strong>Logs</strong></td>
-          <td>{{tools}}</td>
-          <td>~{{N}} GB/day</td>
-        </tr>
-        <tr>
-          <td><strong>Traces</strong></td>
-          <td>{{tools}}</td>
-          <td>~{{N}} spans/sec</td>
-        </tr>
-        <tr>
-          <td><strong>Alerting</strong></td>
-          <td>{{tools}}</td>
-          <td>{{N}} alert rules</td>
-        </tr>
-      </tbody>
-    </table>
-    <p style="margin-top: 0.75rem; font-size: 0.85rem; color: var(--text-muted);">
-      Observability storage: ~{{N}} GB total across all signals. Retention: {{metrics_retention}} / {{logs_retention}} / {{traces_retention}}.
-    </p>
-  </div>
-
-  <!-- Section: Scale at a Glance — environment comparison, NOT per-node -->
-  <div class="section">
-    <h2>Scale at a Glance</h2>
-    <table>
-      <thead>
-        <tr><th>Metric</th><th>Dev</th><th>Staging</th><th>Prod</th></tr>
-      </thead>
-      <tbody>
-        <tr><td>Nodes</td><td>{{N}}</td><td>{{N}}</td><td>{{N}}</td></tr>
-        <tr><td>Total vCPU</td><td>{{N}}</td><td>{{N}}</td><td>{{N}}</td></tr>
-        <tr><td>Total Memory</td><td>{{N}} GB</td><td>{{N}} GB</td><td>{{N}} GB</td></tr>
-        <tr><td>Pods / Services</td><td>{{N}}</td><td>{{N}}</td><td>{{N}}</td></tr>
-        <tr><td>Avg CPU Util</td><td>{{N}}%</td><td>{{N}}%</td><td>{{N}}%</td></tr>
-        <tr><td>Persistent Storage</td><td>{{N}} GB</td><td>{{N}} GB</td><td>{{N}} GB</td></tr>
-      </tbody>
-    </table>
-  </div>
-
-  <!-- Section: Costs — keep it to a summary table -->
-  <div class="section">
-    <h2>Costs (estimated monthly)</h2>
-    <table>
-      <thead>
-        <tr><th>Category</th><th>Estimated Spend</th><th>Notes</th></tr>
-      </thead>
-      <tbody>
-        <tr><td>Compute (EKS/EC2)</td><td>${{N}}</td><td>{{instance types, regions}}</td></tr>
-        <tr><td>Storage (S3/EBS/PV)</td><td>${{N}}</td><td></td></tr>
-        <tr><td>Observability Tools</td><td>${{N}}</td><td>{{vendor names}}</td></tr>
-        <tr><td>Managed Databases</td><td>${{N}}</td><td>{{db names}}</td></tr>
-        <tr><td><strong>Total</strong></td><td><strong>${{N}}</strong></td><td></td></tr>
-      </tbody>
-    </table>
-  </div>
-
-  <!-- Section: Observability Pain Points — brief, actionable, observability-only -->
-  <div class="section">
-    <h2>Observability Pain Points</h2>
-    <div class="pain-point">
-      <strong>{{Pain point title}}</strong>
-      <p>{{1-2 sentence description with supporting data}}</p>
-    </div>
-    <div class="recommendation">
-      <strong>Recommendation:</strong> {{1-2 sentence actionable suggestion}}
-    </div>
-    <!-- Repeat for each pain point. Limit to top 3-5 most impactful. Only include observability-related pain points (alerting, monitoring gaps, cost, tool sprawl, correlation, retention). -->
-  </div>
-
-</div>
-<div class="footer">
-  <p>Generated by <a href="https://oodle.ai">Oodle</a> Discovery Agent</p>
-</div>
-</body>
-</html>
+```bash
+open ./discovery-report.html 2>/dev/null || xdg-open ./discovery-report.html 2>/dev/null || \
+  echo "Report saved to: $(pwd)/discovery-report.html"
 ```
 
-## Report Generation Rules
+### Phase 8.5: Gap Review
 
-1. **Executive-first.** The report is for a buyer or tech champion who needs a bird's-eye view. Lead with the numbers that matter: environments, scale, costs, pain points. Do NOT include per-pod, per-node, or per-service breakdowns.
-2. **Replace all `{{PLACEHOLDER}}` values** with actual discovered data. Use approximations (prefixed with ~) when exact numbers are unavailable.
-3. **Omit sections** where no data was found and the user did not provide information.
-4. **Keep it scannable.** Each section should fit on one screen. Use tables with 3-6 rows, not 20+. Use tags for tech stack, not detailed tables.
-5. **Observability scale is mandatory.** The Observability Stack section MUST include scale numbers (samples/sec, GB/day, spans/sec) alongside tool names. If exact numbers are unavailable, estimate from resource allocations or ask the user.
-6. **Environment comparison.** The Scale section should compare environments side-by-side (dev vs staging vs prod) in a single table, not describe each in isolation.
-7. **Use tags** (`.tag-blue`, `.tag-green`, etc.) for languages, frameworks, and tools — not detailed tables listing every component.
-8. **Use environment badges** (`.env-prod`, `.env-staging`, `.env-dev`) in the environments table.
-9. **Pain points: top 3-5 only, observability-focused.** Only include pain points related to observability (alerting, monitoring gaps, log/trace coverage, cost, tool sprawl, correlation, retention). Do NOT include general infrastructure, deployment, or application-level pain points. Each pain point gets 1-2 sentences max, followed by a 1-2 sentence recommendation.
-10. **No architecture diagrams.** ASCII diagrams add clutter. The tool names and scale numbers tell the story.
-11. **Include actual numbers** — node counts, ingestion rates, costs — not placeholders. Approximations are fine and encouraged.
-12. **Save the file** to a discoverable location and open it in the browser.
-13. **Reference the sample report** at `examples/sample-report.html` in this repository for the expected format, tone, and level of detail. Your output should match that style.
+The generator prints a coverage summary (figures collected per collector + every gap with remediation). Walk the user through it:
+
+1. Summarize what was measured vs. what's missing.
+2. For each gap with a remediation (e.g., "grant usage_read to the application key", "rerun with --loki-endpoint"), ask whether they want to fix and re-run.
+3. After any re-run, regenerate the report (Phase 8.2) and re-open it.
+
+End by telling the user: the `discovery-output/` directory contains the raw evidence for every figure; the report's Provenance Appendix maps each figure to its evidence file.
 
 ## Rate Limiting & Safety
-
-### Throttling Rules
 
 | Target System | Max Rate | Backoff |
 |---------------|----------|---------|
 | Kubernetes API | 5 req/sec | 2s on 429 |
 | AWS API | 2 req/sec | 5s on throttle |
 | GCP API | 2 req/sec | 5s on throttle |
-| Prometheus/metrics endpoint | 1 req/2sec | 5s on timeout |
-| Any port-forward | 1 at a time | Clean up after use |
+| Collector scripts | self-throttled (150ms between requests, circuit breaker) | built in |
 
 ### Safety Rules
 
 - **Never** run `kubectl delete`, `kubectl apply`, `kubectl patch`, or any write operation.
-- **Never** run `aws` commands that create, modify, or delete resources.
-- **Never** modify files in the user's workspace (except the output report).
-- **Always** clean up port-forwards after use (track PIDs with `$!` and `kill $PID`).
-- **Always** use `--no-headers` or `-o json` to avoid interactive prompts.
+- **Never** run cloud CLI commands that create, modify, or delete resources.
+- **Never** modify files in the user's workspace except `./discovery-output/` and the report.
+- **Never** write credentials to disk; pass them as environment variables to collectors.
+- **Never** compute, convert, or round report figures yourself — that is the collectors' job.
 - **If a command hangs** for more than 10 seconds, kill it and move on.
 - **If a command requires credentials** you don't have, skip it and note the gap.
 
@@ -907,28 +412,15 @@ Generate the report using the template structure below. Adapt sections based on 
 | Situation | Action |
 |-----------|--------|
 | CLI tool not installed | Note it as unavailable, skip related checks |
-| No credentials/permissions | Ask user if they can provide access, otherwise skip |
+| `uv` unavailable and user declines install | Degraded mode: skip collectors, record in skipped_collectors |
+| Collector exits non-zero | Capture stderr, retry once, then record in skipped_collectors |
+| No credentials/permissions | Ask user once; otherwise record gap |
 | Command times out | Kill after 10s, note as "unable to assess" |
-| Empty results | Try alternative discovery method, then ask user |
-| Rate limited (429) | Wait 10s, retry once, then skip |
 | Multiple clusters/accounts | Discover each separately, label by environment |
-
-## Asking Clarifying Questions
-
-When information cannot be discovered programmatically, ask the user. Group questions together rather than asking one at a time. Example:
-
-```
-I've completed the automated discovery. I have a few questions to fill in gaps:
-
-1. What is your approximate monthly cloud spend?
-2. Which observability vendor(s) do you pay for (e.g., Datadog, New Relic, Splunk)?
-3. What's your approximate monthly observability spend?
-4. How many engineers are on-call for production?
-5. What's your biggest operational pain point right now?
-```
 
 ## References
 
 - [Oodle](https://oodle.ai) — Observability platform
-- [kubectl cheat sheet](https://kubernetes.io/docs/reference/kubectl/cheatsheet/)
-- [AWS CLI reference](https://docs.aws.amazon.com/cli/latest/reference/)
+- `schemas/summary.schema.json` — collector output contract
+- `schemas/context.schema.json` — agent context contract
+- `examples/sample-report.html` — reference output style
