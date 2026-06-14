@@ -100,6 +100,8 @@ Raw evidence lives in `./discovery-output/` so any figure can be re-derived offl
 
 **See a sample Datadog report:** [preview it in your browser](https://htmlpreview.github.io/?https://github.com/oodle-ai/discovery-agent-skills/blob/main/examples/sample-datadog-report.html) ([source](examples/sample-datadog-report.html)) — generated from the synthetic test fixtures in this repo.
 
+**See a sample CloudWatch report:** [preview it in your browser](https://htmlpreview.github.io/?https://github.com/oodle-ai/discovery-agent-skills/blob/main/examples/sample-cloudwatch-report.html) ([source](examples/sample-cloudwatch-report.html)) — generated from the synthetic test fixtures in this repo.
+
 ## Requirements
 
 - `uv` (https://docs.astral.sh/uv/) and Python ≥ 3.11 — used to run collector scripts. If unavailable, the skill runs in degraded mode (no measured figures, gaps reported).
