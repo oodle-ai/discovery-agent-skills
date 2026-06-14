@@ -374,7 +374,8 @@ def collect_xray_groups(
         print(f"collecting X-Ray groups ({region})")
         session = boto3_session(profile, region)
         xray = session.client("xray")
-        res = boto_call(lambda _x=xray: _x.get_paginator("get_groups").paginate().build_full_result())
+        pager = xray.get_paginator("get_groups")
+        res = boto_call(lambda _p=pager: _p.paginate().build_full_result())
         fetches[key] = res
         if res.ok:
             results[key] = {"groups": res.data.get("Groups", [])}

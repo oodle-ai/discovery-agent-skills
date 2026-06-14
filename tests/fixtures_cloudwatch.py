@@ -208,9 +208,6 @@ def _make_xray_groups(count: int) -> list[dict]:
 
 
 def _make_xray_trace_summaries(count: int) -> list[dict]:
-    from datetime import UTC, datetime, timedelta
-
-    now = datetime.now(UTC)
     return [
         {
             "Id": f"1-{i:08x}-abcdef012345678901234567",
