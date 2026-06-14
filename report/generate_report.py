@@ -182,6 +182,8 @@ def exec_cards(figures: dict, ctx: dict) -> str:
     cards.append(measured("logs.ingest_gb_per_day", "Log Volume", "GB/day"))
     if aggregate(figures, "traces.spans_per_sec") is not None:
         cards.append(measured("traces.spans_per_sec", "Trace Spans", "spans/sec"))
+    elif aggregate(figures, "traces.xray_traces_per_day") is not None:
+        cards.append(measured("traces.xray_traces_per_day", "Trace Volume", "traces/day"))
     else:
         cards.append(measured("traces.ingest_gb_per_day", "Trace Volume", "GB/day"))
     cards.append(measured("cost.monthly_usd", "Est. Observability Spend", "USD"))
@@ -244,6 +246,8 @@ SIGNAL_FIGURES: dict[str, list[tuple[str, str]]] = {
     "traces": [
         ("traces.spans_per_sec", "spans/sec"),
         ("traces.ingest_gb_per_day", "GB/day ingested"),
+        ("traces.xray_traces_per_day", "traces/day (X-Ray)"),
+        ("traces.xray_groups_count", "X-Ray groups"),
     ],
     "alerting": [
         ("alerts.monitor_count", "monitors"),

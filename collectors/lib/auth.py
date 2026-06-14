@@ -27,6 +27,17 @@ def datadog_headers(api_key: str, app_key: str) -> dict[str, str]:
     }
 
 
+def boto3_session(profile: str | None = None, region: str | None = None):
+    """Return a boto3 Session for the given profile and region.
+
+    Boto3 is imported lazily so non-AWS collectors don't pay the import cost
+    and don't need boto3 installed.
+    """
+    import boto3
+
+    return boto3.Session(profile_name=profile or None, region_name=region or None)
+
+
 def gcloud_access_token() -> str:
     """Fetch an access token from the user's gcloud CLI session."""
     out = subprocess.run(

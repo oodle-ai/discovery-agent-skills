@@ -26,6 +26,13 @@ def datadog_collect():
 
 
 @pytest.fixture(scope="session")
+def cloudwatch_collect():
+    return load_module(
+        "cloudwatch_collect", REPO_ROOT / "collectors" / "cloudwatch" / "collect.py"
+    )
+
+
+@pytest.fixture(scope="session")
 def report_gen():
     return load_module("generate_report", REPO_ROOT / "report" / "generate_report.py")
 
