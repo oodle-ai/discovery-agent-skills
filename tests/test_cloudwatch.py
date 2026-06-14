@@ -37,6 +37,17 @@ def _make_cw_client():
     return cw
 
 
+def _make_xray_client():
+    xray = MagicMock()
+    xray.get_paginator.side_effect = lambda op: {
+        "get_groups": _make_paginator({"Groups": list(fx.XRAY_GROUPS)}),
+        "get_trace_summaries": _make_paginator({
+            "TraceSummaries": list(fx.XRAY_TRACE_SUMMARIES),
+        }),
+    }[op]
+    return xray
+
+
 def _make_logs_client():
     logs = MagicMock()
     logs.get_paginator.side_effect = lambda op: {
@@ -79,6 +90,8 @@ def _mock_session_factory(ce_deny=False):
                     return _make_logs_client()
                 elif service == "ce":
                     return _make_ce_client(deny=ce_deny)
+                elif service == "xray":
+                    return _make_xray_client()
                 elif service == "ec2":
                     ec2 = MagicMock()
                     ec2.describe_regions.return_value = {
@@ -139,6 +152,8 @@ class TestCloudwatchCollector:
             fx.CE_MONTHLY_COST, rel=0.01
         )
         assert figs["cost.monthly_usd"]["status"] == "ok"
+        assert figs["traces.xray_groups_count"]["value"] == fx.XRAY_GROUPS_COUNT
+        assert figs["traces.xray_traces_per_day"]["value"] == fx.XRAY_TRACES_PER_DAY
         assert summary["gaps"] == []
 
         # provenance present on every collected figure
@@ -157,6 +172,7 @@ class TestCloudwatchCollector:
         assert "namespace_breakdown" in inv
         assert "cost_by_usage_type" in inv
         assert "regions_collected" in inv
+        assert "xray_group_names" in inv
 
     def test_ce_permission_denied_gaps_cost_and_ingest(
         self, cloudwatch_collect, tmp_path, monkeypatch
@@ -222,6 +238,6 @@ class TestCloudwatchCollector:
         evidence_dir = tmp_path / "out" / "evidence"
         assert evidence_dir.exists()
         evidence_files = list(evidence_dir.glob("*.json"))
-        assert len(evidence_files) >= 5
+        assert len(evidence_files) >= 7
         manifest = json.loads((tmp_path / "out" / "manifest.json").read_text())
-        assert len(manifest) >= 5
+        assert len(manifest) >= 7

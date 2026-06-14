@@ -24,6 +24,8 @@ LOOKBACK_DAYS = 30
 DASHBOARDS_COUNT = 12
 METRIC_STREAMS_COUNT = 3
 BREAKDOWN_TOP_GROUPS = 5  # for testing --log-group-breakdown
+XRAY_GROUPS_COUNT = 4
+XRAY_TRACES_PER_DAY = 1500
 
 
 # ── helpers ─────────────────────────────────────────────────────────────
@@ -194,6 +196,37 @@ def _make_breakdown_stats(bytes_total: float) -> dict:
     }
 
 
+def _make_xray_groups(count: int) -> list[dict]:
+    return [
+        {
+            "GroupName": f"service-{i}" if i > 0 else "Default",
+            "GroupARN": f"arn:aws:xray:us-east-1:123456789012:group/service-{i}",
+            "FilterExpression": "" if i == 0 else f'service("service-{i}")',
+        }
+        for i in range(count)
+    ]
+
+
+def _make_xray_trace_summaries(count: int) -> list[dict]:
+    from datetime import UTC, datetime, timedelta
+
+    now = datetime.now(UTC)
+    return [
+        {
+            "Id": f"1-{i:08x}-abcdef012345678901234567",
+            "Duration": 0.5 + (i % 10) * 0.1,
+            "ResponseTime": 0.3 + (i % 10) * 0.05,
+            "HasFault": i % 20 == 0,
+            "HasError": i % 10 == 0,
+            "Http": {"HttpStatus": 200},
+            "Annotations": {},
+            "Users": [],
+            "ServiceIds": [],
+        }
+        for i in range(count)
+    ]
+
+
 # ── pre-built responses ────────────────────────────────────────────────
 
 METRICS = _make_metrics(TOTAL_METRICS, CUSTOM_METRICS)
@@ -203,3 +236,5 @@ DASHBOARDS = _make_dashboards(DASHBOARDS_COUNT)
 METRIC_STREAMS = _make_metric_streams(METRIC_STREAMS_COUNT)
 CE_COST = _make_ce_cost_response(CE_MONTHLY_COST)
 CE_LOG_INGEST = _make_ce_log_ingest_response(CE_LOG_INGEST_BYTES_PER_DAY, LOOKBACK_DAYS)
+XRAY_GROUPS = _make_xray_groups(XRAY_GROUPS_COUNT)
+XRAY_TRACE_SUMMARIES = _make_xray_trace_summaries(XRAY_TRACES_PER_DAY)

@@ -50,6 +50,10 @@ EXPECTED = [
     ExpectedFigure("cloudwatch.log_groups_count", "Log Groups", "log groups", "cloudwatch"),
     ExpectedFigure("alerts.monitor_count", "CloudWatch Alarms", "alarms", "alerts"),
     ExpectedFigure("cost.monthly_usd", "CloudWatch monthly cost", "USD", "cost"),
+    ExpectedFigure("traces.xray_groups_count", "X-Ray groups", "groups", "traces"),
+    ExpectedFigure(
+        "traces.xray_traces_per_day", "X-Ray trace volume", "traces/day", "traces"
+    ),
 ]
 
 CE_SERVICE = "AmazonCloudWatch"
@@ -356,6 +360,60 @@ def collect_log_group_breakdown(
         results["log_group_breakdown"],
         source_api="GET cloudwatch:GetMetricStatistics (AWS/Logs IncomingBytes per group)",
     )
+
+
+def collect_xray_groups(
+    profile: str | None,
+    regions: list[str],
+    ev: EvidenceWriter,
+    results: dict[str, Any],
+) -> dict[str, BotoResult]:
+    fetches: dict[str, BotoResult] = {}
+    for region in regions:
+        key = f"xray_groups_{safe_region(region)}"
+        print(f"collecting X-Ray groups ({region})")
+        session = boto3_session(profile, region)
+        xray = session.client("xray")
+        res = boto_call(lambda _x=xray: _x.get_paginator("get_groups").paginate().build_full_result())
+        fetches[key] = res
+        if res.ok:
+            results[key] = {"groups": res.data.get("Groups", [])}
+            ev.write(key, results[key], source_api=f"GET xray:GetGroups ({region})")
+        else:
+            print(f"  WARN {key}: {res.error}")
+    return fetches
+
+
+def collect_xray_trace_summaries(
+    profile: str | None,
+    regions: list[str],
+    lookback_days: float,
+    ev: EvidenceWriter,
+    results: dict[str, Any],
+) -> dict[str, BotoResult]:
+    fetches: dict[str, BotoResult] = {}
+    now = datetime.now(UTC)
+    start = now - timedelta(days=min(lookback_days, 1))
+    for region in regions:
+        key = f"xray_traces_{safe_region(region)}"
+        print(f"collecting X-Ray trace summaries ({region})")
+        session = boto3_session(profile, region)
+        xray = session.client("xray")
+        res = boto_call(
+            lambda _x=xray: _x.get_paginator("get_trace_summaries")
+            .paginate(StartTime=start, EndTime=now, Sampling=True)
+            .build_full_result()
+        )
+        fetches[key] = res
+        if res.ok:
+            summaries = res.data.get("TraceSummaries", [])
+            results[key] = {"count": len(summaries), "sample_window_hours": 24}
+            ev.write(
+                key, results[key], source_api=f"GET xray:GetTraceSummaries ({region})"
+            )
+        else:
+            print(f"  WARN {key}: {res.error}")
+    return fetches
 
 
 # ── derivation ──────────────────────────────────────────────────────────
@@ -715,6 +773,96 @@ def derive_cost(
         )
 
 
+def derive_xray(
+    results: dict[str, Any],
+    fetches: dict[str, BotoResult],
+    summary: SummaryWriter,
+    regions: list[str],
+) -> None:
+    # X-Ray groups
+    groups_status, groups_failed = region_status(fetches, "xray_groups_", regions)
+    all_groups = all_region_items(results, "xray_groups_", "groups")
+
+    if not all_groups and groups_status == "unavailable":
+        res = next(
+            (fetches[f"xray_groups_{safe_region(r)}"] for r in regions
+             if fetches.get(f"xray_groups_{safe_region(r)}")),
+            None,
+        )
+        reason = res.gap_reason if res and res.gap_reason else "api_error"
+        detail = res.error if res and res.error else "GetGroups failed in all regions"
+        summary.mark_unavailable("traces.xray_groups_count", reason, detail)
+    else:
+        notes = f"failed regions: {', '.join(groups_failed)}" if groups_failed else None
+        evidence = [
+            f"evidence/xray_groups_{safe_region(r)}.json"
+            for r in regions
+            if results.get(f"xray_groups_{safe_region(r)}")
+        ]
+        summary.add_figure(
+            Figure(
+                id="traces.xray_groups_count",
+                label="X-Ray groups",
+                value=float(len(all_groups)),
+                unit="groups",
+                status=groups_status,
+                method="count of GetGroups results across all regions",
+                source_api="xray:GetGroups (paginated)",
+                evidence_files=evidence,
+                notes=notes,
+            )
+        )
+
+    # X-Ray trace volume
+    traces_status, traces_failed = region_status(fetches, "xray_traces_", regions)
+    total_traces = 0
+    has_any = False
+    for r in regions:
+        data = results.get(f"xray_traces_{safe_region(r)}")
+        if data:
+            total_traces += data.get("count", 0)
+            has_any = True
+
+    if not has_any and traces_status == "unavailable":
+        res = next(
+            (fetches[f"xray_traces_{safe_region(r)}"] for r in regions
+             if fetches.get(f"xray_traces_{safe_region(r)}")),
+            None,
+        )
+        reason = res.gap_reason if res and res.gap_reason else "api_error"
+        detail = res.error if res and res.error else "GetTraceSummaries failed in all regions"
+        summary.mark_unavailable("traces.xray_traces_per_day", reason, detail)
+    else:
+        notes = f"failed regions: {', '.join(traces_failed)}" if traces_failed else None
+        evidence = [
+            f"evidence/xray_traces_{safe_region(r)}.json"
+            for r in regions
+            if results.get(f"xray_traces_{safe_region(r)}")
+        ]
+        summary.add_figure(
+            Figure(
+                id="traces.xray_traces_per_day",
+                label="X-Ray trace volume",
+                value=float(total_traces),
+                unit="traces/day",
+                status=traces_status,
+                method="count of sampled GetTraceSummaries over 24h window across all regions",
+                source_api="xray:GetTraceSummaries (paginated, Sampling=True)",
+                evidence_files=evidence,
+                notes=notes,
+            )
+        )
+
+    # inventory: service breakdown from groups
+    if all_groups:
+        service_names = set()
+        for g in all_groups:
+            name = g.get("GroupName", "")
+            if name and name != "Default":
+                service_names.add(name)
+        summary.inventory["xray_group_names"] = sorted(service_names)
+
+
 def build_summary(
     results: dict[str, Any],
     fetches: dict[str, BotoResult],
@@ -727,6 +875,7 @@ def build_summary(
     derive_log_ingest(results, fetches, summary, lookback_days)
     derive_alarms(results, fetches, summary, regions)
     derive_cost(results, fetches, summary)
+    derive_xray(results, fetches, summary, regions)
 
     inv = summary.inventory
     inv["regions_collected"] = regions
@@ -834,6 +983,12 @@ def main() -> int:
         fetches["ce_cost"] = collect_cost_ce(args.profile, lookback_days, ev, results)
         fetches["ce_log_ingest"] = collect_log_ingest_ce(
             args.profile, lookback_days, ev, results
+        )
+        fetches.update(collect_xray_groups(args.profile, regions, ev, results))
+        fetches.update(
+            collect_xray_trace_summaries(
+                args.profile, regions, lookback_days, ev, results
+            )
         )
 
         if args.log_group_breakdown:
