@@ -33,6 +33,11 @@ def cloudwatch_collect():
 
 
 @pytest.fixture(scope="session")
+def gcp_collect():
+    return load_module("gcp_collect", REPO_ROOT / "collectors" / "gcp" / "collect.py")
+
+
+@pytest.fixture(scope="session")
 def report_gen():
     return load_module("generate_report", REPO_ROOT / "report" / "generate_report.py")
 

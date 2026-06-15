@@ -31,8 +31,8 @@ deterministic collector script** (`collectors/<tool>/collect.py`) — not by the
   reason (e.g., `permission_denied`) and a remediation — never silently omitted, never guessed.
 - The report itself is rendered by `report/generate_report.py`; the agent cannot edit figures.
 
-Collector status: **Datadog** and **Kubernetes inventory** (nodes/vCPU/memory/services via kubectl) are available today. Prometheus/Thanos/VictoriaMetrics/Loki/Tempo,
-Elasticsearch/OpenSearch, Mimir, AWS CloudWatch, and GCP Cloud Operations collectors are in progress;
+Collector status: **Datadog**, **AWS CloudWatch**, **GCP Cloud Operations**, and **Kubernetes inventory** (nodes/vCPU/memory/services via kubectl) are available today. Prometheus/Thanos/VictoriaMetrics/Loki/Tempo,
+Elasticsearch/OpenSearch, and Mimir collectors are in progress;
 until they ship, those tools are covered by user-reported numbers, clearly marked as unverified.
 
 ## Install
@@ -101,6 +101,8 @@ Raw evidence lives in `./discovery-output/` so any figure can be re-derived offl
 **See a sample Datadog report:** [preview it in your browser](https://htmlpreview.github.io/?https://github.com/oodle-ai/discovery-agent-skills/blob/main/examples/sample-datadog-report.html) ([source](examples/sample-datadog-report.html)) — generated from the synthetic test fixtures in this repo.
 
 **See a sample CloudWatch report:** [preview it in your browser](https://htmlpreview.github.io/?https://github.com/oodle-ai/discovery-agent-skills/blob/main/examples/sample-cloudwatch-report.html) ([source](examples/sample-cloudwatch-report.html)) — generated from the synthetic test fixtures in this repo.
+
+**See a sample GCP Cloud Operations report:** [preview it in your browser](https://htmlpreview.github.io/?https://github.com/oodle-ai/discovery-agent-skills/blob/main/examples/sample-gcp-report.html) ([source](examples/sample-gcp-report.html)) — generated from the synthetic test fixtures in this repo.
 
 ## Requirements
 
