@@ -38,6 +38,15 @@ def boto3_session(profile: str | None = None, region: str | None = None):
     return boto3.Session(profile_name=profile or None, region_name=region or None)
 
 
+def es_api_key_headers(encoded_key: str) -> dict[str, str]:
+    """Headers for Elasticsearch API key auth.
+
+    Expects the already-base64-encoded key string (as returned by the
+    Create API Key response's ``encoded`` field).
+    """
+    return {"Authorization": f"ApiKey {encoded_key}"}
+
+
 def gcloud_access_token() -> str:
     """Fetch an access token from the user's gcloud CLI session."""
     out = subprocess.run(

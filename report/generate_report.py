@@ -182,6 +182,8 @@ def exec_cards(figures: dict, ctx: dict) -> str:
     cards.append(measured("logs.ingest_gb_per_day", "Log Volume", "GB/day"))
     if aggregate(figures, "traces.spans_per_sec") is not None:
         cards.append(measured("traces.spans_per_sec", "Trace Spans", "spans/sec"))
+    elif aggregate(figures, "traces.spans_per_day") is not None:
+        cards.append(measured("traces.spans_per_day", "Trace Spans", "spans/day"))
     elif aggregate(figures, "traces.xray_traces_per_day") is not None:
         cards.append(measured("traces.xray_traces_per_day", "Trace Volume", "traces/day"))
     else:
@@ -245,6 +247,7 @@ SIGNAL_FIGURES: dict[str, list[tuple[str, str]]] = {
     ],
     "traces": [
         ("traces.spans_per_sec", "spans/sec"),
+        ("traces.spans_per_day", "spans/day"),
         ("traces.ingest_gb_per_day", "GB/day ingested"),
         ("traces.xray_traces_per_day", "traces/day (X-Ray)"),
         ("traces.xray_groups_count", "X-Ray groups"),
@@ -409,6 +412,16 @@ def pain_points_section(ctx: dict) -> str:
     )
 
 
+def _format_inv_cell(key: str, val: object) -> str:
+    if val is None:
+        return "—"
+    if isinstance(val, list):
+        return ", ".join(str(v) for v in val)
+    if key.endswith("_bytes") and isinstance(val, (int, float)):
+        return T.human_bytes(val)
+    return T.esc(val)
+
+
 def render_inventory(inv: dict) -> str:
     """Generic renderer for tool-specific inventory facts."""
     parts = []
@@ -416,15 +429,23 @@ def render_inventory(inv: dict) -> str:
     for key, val in inv.items():
         label = key.replace("_", " ").capitalize()
         if isinstance(val, (str, int, float)) or val is None:
-            scalars.append((label, val))
+            display = T.human_bytes(val) if key.endswith("_bytes") and val is not None else val
+            if key.endswith("_bytes"):
+                label = label.rsplit(" bytes", 1)[0]
+            scalars.append((label, display))
         elif isinstance(val, list) and val and isinstance(val[0], dict):
             headers = list(val[0].keys())
             rows = [
-                [T.esc(item.get(h) if item.get(h) is not None else "—") for h in headers]
+                [_format_inv_cell(h, item.get(h)) for h in headers]
                 for item in val[:50]
             ]
+            col_labels = [
+                h.replace("_bytes", "").replace("_", " ") if h.endswith("_bytes")
+                else h.replace("_", " ")
+                for h in headers
+            ]
             parts.append(f"<h3>{T.esc(label)}</h3>")
-            parts.append(T.table([h.replace("_", " ") for h in headers], rows))
+            parts.append(T.table(col_labels, rows))
             if len(val) > 50:
                 parts.append(f'<p class="muted">…and {len(val) - 50} more (see evidence files)</p>')
         elif isinstance(val, list):
@@ -434,7 +455,9 @@ def render_inventory(inv: dict) -> str:
                 + "</p>"
             )
         elif isinstance(val, dict):
-            rows = [[T.esc(k), T.esc(v)] for k, v in val.items()]
+            rows = [
+                [T.esc(k), _format_inv_cell(k, v)] for k, v in val.items()
+            ]
             parts.append(f"<h3>{T.esc(label)}</h3>")
             parts.append(T.table(["Key", "Value"], rows))
     if scalars:

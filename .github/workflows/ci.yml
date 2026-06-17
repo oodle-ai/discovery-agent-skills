@@ -27,6 +27,11 @@ jobs:
             --out /tmp/sample-datadog-report.html --strict --date 2026-01-01
           diff -u examples/sample-datadog-report.html /tmp/sample-datadog-report.html \
             || (echo "examples/sample-datadog-report.html is stale; regenerate it from tests/fixtures" && exit 1)
+          uv run report/generate_report.py \
+            --summaries tests/fixtures/elasticsearch_summary.json \
+            --out /tmp/sample-elasticsearch-report.html --date 2026-01-01
+          diff -u examples/sample-elasticsearch-report.html /tmp/sample-elasticsearch-report.html \
+            || (echo "examples/sample-elasticsearch-report.html is stale; regenerate it from tests/fixtures" && exit 1)
 
   secret-scan:
     runs-on: ubuntu-latest

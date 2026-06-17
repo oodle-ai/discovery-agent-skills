@@ -87,8 +87,14 @@ class HttpClient:
     def dead(self) -> bool:
         return self._dead
 
-    def get_json(self, path: str, params: dict[str, str] | None = None) -> FetchResult:
-        """GET path, expect JSON. Never raises for HTTP/connection errors."""
+    def _request(
+        self,
+        method: str,
+        path: str,
+        params: dict[str, str] | None = None,
+        json_body: Any = None,
+    ) -> FetchResult:
+        """Shared request logic for GET/POST. Never raises for HTTP/connection errors."""
         if self._dead:
             return FetchResult(
                 ok=False,
@@ -100,7 +106,7 @@ class HttpClient:
         last_exc: Exception | None = None
         for attempt in range(MAX_RETRIES + 1):
             try:
-                r = self._client.get(path, params=params)
+                r = self._client.request(method, path, params=params, json=json_body)
             except (httpx.ConnectError, httpx.ConnectTimeout, httpx.ReadTimeout) as exc:
                 last_exc = exc
                 if attempt < MAX_RETRIES:
@@ -135,3 +141,16 @@ class HttpClient:
                 )
         # unreachable in practice; keep type-checkers happy
         return FetchResult(ok=False, error=str(last_exc), gap_reason="api_error")
+
+    def get_json(self, path: str, params: dict[str, str] | None = None) -> FetchResult:
+        """GET path, expect JSON. Never raises for HTTP/connection errors."""
+        return self._request("GET", path, params=params)
+
+    def post_json(
+        self,
+        path: str,
+        json_body: Any = None,
+        params: dict[str, str] | None = None,
+    ) -> FetchResult:
+        """POST path with optional JSON body, expect JSON. Never raises."""
+        return self._request("POST", path, params=params, json_body=json_body)
