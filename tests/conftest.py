@@ -38,6 +38,13 @@ def gcp_collect():
 
 
 @pytest.fixture(scope="session")
+def es_collect():
+    return load_module(
+        "es_collect", REPO_ROOT / "collectors" / "elasticsearch" / "collect.py"
+    )
+
+
+@pytest.fixture(scope="session")
 def report_gen():
     return load_module("generate_report", REPO_ROOT / "report" / "generate_report.py")
 

@@ -1,0 +1,305 @@
+{
+  "schema_version": "1.0",
+  "collector": "elasticsearch",
+  "collector_version": "1.0.0",
+  "run": {
+    "started_at": "2026-06-17T09:16:50Z",
+    "finished_at": "2026-06-17T09:16:50Z",
+    "target": "report-only",
+    "lookback": "7d",
+    "args_redacted": {
+      "es_url": null,
+      "kibana_url": null,
+      "lookback": "7d",
+      "skip_kibana_objects": false,
+      "skip_snapshots": false
+    }
+  },
+  "environment": {
+    "detected_backend": "elasticsearch",
+    "version": "8.12.0",
+    "cluster_name": "test-cluster",
+    "detection_method": "/_cluster/stats nodes.versions"
+  },
+  "figures": [
+    {
+      "id": "elasticsearch.total_docs",
+      "label": "Total documents",
+      "value": 10000500.0,
+      "unit": "docs",
+      "status": "ok",
+      "method": "sum of docs.count across all indices",
+      "source_api": "GET /_cat/indices",
+      "query": null,
+      "time_window": null,
+      "evidence_files": [
+        "evidence/cat_indices.json"
+      ],
+      "notes": null,
+      "unavailable_reason": null,
+      "remediation": null
+    },
+    {
+      "id": "elasticsearch.total_store_size_gb",
+      "label": "Total store size (primary + replica)",
+      "value": 40.05,
+      "unit": "GB",
+      "status": "ok",
+      "method": "sum of store.size across all indices, bytes -> GB (1e9)",
+      "source_api": "GET /_cat/indices",
+      "query": null,
+      "time_window": null,
+      "evidence_files": [
+        "evidence/cat_indices.json"
+      ],
+      "notes": null,
+      "unavailable_reason": null,
+      "remediation": null
+    },
+    {
+      "id": "elasticsearch.primary_store_size_gb",
+      "label": "Primary store size",
+      "value": 20.02,
+      "unit": "GB",
+      "status": "ok",
+      "method": "sum of pri.store.size across all indices, bytes -> GB (1e9)",
+      "source_api": "GET /_cat/indices",
+      "query": null,
+      "time_window": null,
+      "evidence_files": [
+        "evidence/cat_indices.json"
+      ],
+      "notes": null,
+      "unavailable_reason": null,
+      "remediation": null
+    },
+    {
+      "id": "hosts.count",
+      "label": "Data nodes",
+      "value": 3.0,
+      "unit": "nodes",
+      "status": "ok",
+      "method": "count of nodes with data roles from /_nodes/os,jvm",
+      "source_api": "GET /_nodes/os,jvm",
+      "query": null,
+      "time_window": null,
+      "evidence_files": [
+        "evidence/nodes_info.json"
+      ],
+      "notes": null,
+      "unavailable_reason": null,
+      "remediation": null
+    },
+    {
+      "id": "elasticsearch.total_shards",
+      "label": "Active shards",
+      "value": 150.0,
+      "unit": "shards",
+      "status": "ok",
+      "method": "active_shards from /_cluster/health",
+      "source_api": "GET /_cluster/health",
+      "query": null,
+      "time_window": null,
+      "evidence_files": [
+        "evidence/cluster_health.json"
+      ],
+      "notes": null,
+      "unavailable_reason": null,
+      "remediation": null
+    },
+    {
+      "id": "logs.ingest_gb_per_day",
+      "label": "Daily ingestion (primary)",
+      "value": 4.0,
+      "unit": "GB/day",
+      "status": "ok",
+      "method": "sum of pri.store.size for date-based indices in 5-day window / 5 days, bytes -> GB (1e9); date parsed from index names",
+      "source_api": "GET /_cat/indices + GET /_all/_settings",
+      "query": null,
+      "time_window": null,
+      "evidence_files": [
+        "evidence/cat_indices.json",
+        "evidence/index_settings.json"
+      ],
+      "notes": null,
+      "unavailable_reason": null,
+      "remediation": null
+    }
+  ],
+  "inventory": {
+    "cluster_name": "test-cluster",
+    "cluster_status": "green",
+    "number_of_nodes": 3,
+    "number_of_data_nodes": 3,
+    "unassigned_shards": 0,
+    "cluster_memory_bytes": 48000000000,
+    "cluster_disk_total_bytes": 3000000000000,
+    "cluster_disk_available_bytes": 2000000000000,
+    "cluster_jvm_heap_max_bytes": 24000000000,
+    "node_fleet": [
+      {
+        "name": "es-data-0",
+        "roles": [
+          "data",
+          "data_content",
+          "data_hot",
+          "ingest",
+          "master"
+        ],
+        "cpu_count": 8,
+        "ram_total_bytes": 16000000000,
+        "ram_used_percent": 72,
+        "heap_max_bytes": 8000000000,
+        "heap_used_percent": 50.0,
+        "disk_total_bytes": 1000000000000,
+        "disk_available_bytes": 600000000000,
+        "disk_used_percent": 40.0
+      },
+      {
+        "name": "es-data-1",
+        "roles": [
+          "data",
+          "data_content",
+          "data_hot",
+          "ingest",
+          "master"
+        ],
+        "cpu_count": 8,
+        "ram_total_bytes": 16000000000,
+        "ram_used_percent": 72,
+        "heap_max_bytes": 8000000000,
+        "heap_used_percent": 50.0,
+        "disk_total_bytes": 1000000000000,
+        "disk_available_bytes": 600000000000,
+        "disk_used_percent": 40.0
+      },
+      {
+        "name": "es-data-2",
+        "roles": [
+          "data",
+          "data_content",
+          "data_hot",
+          "ingest",
+          "master"
+        ],
+        "cpu_count": 8,
+        "ram_total_bytes": 16000000000,
+        "ram_used_percent": 72,
+        "heap_max_bytes": 8000000000,
+        "heap_used_percent": 50.0,
+        "disk_total_bytes": 1000000000000,
+        "disk_available_bytes": 600000000000,
+        "disk_used_percent": 40.0
+      }
+    ],
+    "index_patterns": [
+      {
+        "pattern": "logs-app-*",
+        "index_count": 5,
+        "total_docs": 5000000,
+        "total_size_bytes": 20000000000,
+        "primary_size_bytes": 10000000000,
+        "latest_date": "2026-06-16"
+      },
+      {
+        "pattern": "metrics-infra-*",
+        "index_count": 5,
+        "total_docs": 5000000,
+        "total_size_bytes": 20000000000,
+        "primary_size_bytes": 10000000000,
+        "latest_date": "2026-06-16"
+      },
+      {
+        "pattern": ".kibana_8.12.0_001",
+        "index_count": 1,
+        "total_docs": 500,
+        "total_size_bytes": 50000000,
+        "primary_size_bytes": 25000000,
+        "latest_date": "2026-05-18"
+      }
+    ],
+    "daily_ingestion": [
+      {
+        "date": "2026-06-12",
+        "primary_gb": 4.0
+      },
+      {
+        "date": "2026-06-13",
+        "primary_gb": 4.0
+      },
+      {
+        "date": "2026-06-14",
+        "primary_gb": 4.0
+      },
+      {
+        "date": "2026-06-15",
+        "primary_gb": 4.0
+      },
+      {
+        "date": "2026-06-16",
+        "primary_gb": 4.0
+      }
+    ],
+    "search_stats": {
+      "query_total": 150000,
+      "query_time_ms": 750000,
+      "avg_query_latency_ms": 5.0,
+      "fetch_total": 90000,
+      "fetch_time_ms": 270000,
+      "avg_fetch_latency_ms": 3.0,
+      "scroll_total": 3000,
+      "suggest_total": 0
+    },
+    "ilm_policies": [
+      {
+        "name": "logs-policy",
+        "phases": [
+          "hot",
+          "warm",
+          "delete"
+        ],
+        "hot_min_age": "0ms",
+        "rollover": {
+          "max_size": "50gb",
+          "max_age": "1d"
+        },
+        "warm_min_age": "7d",
+        "delete_min_age": "30d"
+      },
+      {
+        "name": "metrics-policy",
+        "phases": [
+          "hot",
+          "delete"
+        ],
+        "hot_min_age": "0ms",
+        "rollover": {
+          "max_age": "7d"
+        },
+        "delete_min_age": "90d"
+      }
+    ],
+    "rest_api_usage": [
+      {
+        "action": "nodes:data:read/search[phase/query]",
+        "count": 150000
+      },
+      {
+        "action": "indices:data/write/bulk[s]",
+        "count": 90000
+      },
+      {
+        "action": "cluster:monitor/health",
+        "count": 30000
+      },
+      {
+        "action": "indices:admin/refresh[s]",
+        "count": 15000
+      }
+    ],
+    "snapshot_repositories": [
+      "s3-backups"
+    ]
+  },
+  "gaps": []
+}

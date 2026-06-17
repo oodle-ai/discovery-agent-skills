@@ -1,0 +1,68 @@
+services:
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.17.0
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - xpack.license.self_generated.type=basic
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+      - cluster.name=discovery-test
+    ports:
+      - "9200:9200"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:9200/_cluster/health || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  seed:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.17.0
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    entrypoint: /bin/bash
+    command:
+      - -c
+      - |
+        set -e
+        ES=http://elasticsearch:9200
+
+        # Create ILM policy
+        curl -sf -X PUT "$$ES/_ilm/policy/logs-policy" -H 'Content-Type: application/json' -d '{
+          "policy": {
+            "phases": {
+              "hot": {"min_age": "0ms", "actions": {"rollover": {"max_size": "50gb", "max_age": "1d"}}},
+              "delete": {"min_age": "30d", "actions": {"delete": {}}}
+            }
+          }
+        }'
+
+        # Create date-based indices with known doc counts (last 7 days)
+        for i in 0 1 2 3 4 5 6; do
+          DATE=$$(date -u -d "-$${i} days" +%Y.%m.%d)
+          INDEX="logs-app-$$DATE"
+          echo "Creating index $$INDEX"
+
+          curl -sf -X PUT "$$ES/$$INDEX" -H 'Content-Type: application/json' -d '{
+            "settings": {"number_of_shards": 2, "number_of_replicas": 0}
+          }'
+
+          # Bulk-insert 100 docs per index
+          BULK=""
+          for j in $$(seq 1 100); do
+            BULK="$${BULK}{\"index\":{}}\n{\"@timestamp\":\"$${DATE//./-}T00:00:00Z\",\"message\":\"Log line $$j for $$DATE with padding to reach a reasonable document size for testing the elasticsearch collector\",\"level\":\"info\",\"service\":\"test-app\",\"host\":\"node-1\"}\n"
+          done
+          printf "$$BULK" | curl -sf -X POST "$$ES/$$INDEX/_bulk" -H 'Content-Type: application/x-ndjson' --data-binary @- > /dev/null
+        done
+
+        # Create a non-date index
+        curl -sf -X PUT "$$ES/config-store" -H 'Content-Type: application/json' -d '{
+          "settings": {"number_of_shards": 1, "number_of_replicas": 0}
+        }'
+        curl -sf -X POST "$$ES/config-store/_doc" -H 'Content-Type: application/json' -d '{"key": "test", "value": "data"}'
+
+        # Force refresh
+        curl -sf -X POST "$$ES/_refresh"
+        echo ""
+        echo "Seed complete. Index summary:"
+        curl -sf "$$ES/_cat/indices?v&bytes=b&s=index"
