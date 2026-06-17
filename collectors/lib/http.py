@@ -61,14 +61,21 @@ class HttpClient:
         timeout_s: float = 60.0,
         verify: bool = True,
         delay_s: float = REQUEST_DELAY_S,
+        transport: httpx.BaseTransport | None = None,
     ) -> None:
-        self._client = httpx.Client(
-            base_url=base_url,
-            headers=headers or {},
-            auth=auth,
-            verify=verify,
-            timeout=timeout_s,
-        )
+        if transport and auth:
+            raise ValueError("Provide either transport or auth, not both")
+        kwargs: dict[str, Any] = {
+            "base_url": base_url,
+            "headers": headers or {},
+            "verify": verify,
+            "timeout": timeout_s,
+        }
+        if transport:
+            kwargs["transport"] = transport
+        elif auth:
+            kwargs["auth"] = auth
+        self._client = httpx.Client(**kwargs)
         self.base_url = base_url
         self.delay_s = delay_s
         self._consecutive_conn_failures = 0

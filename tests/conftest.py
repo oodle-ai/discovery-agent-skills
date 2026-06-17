@@ -45,6 +45,13 @@ def es_collect():
 
 
 @pytest.fixture(scope="session")
+def os_collect():
+    return load_module(
+        "os_collect", REPO_ROOT / "collectors" / "opensearch" / "collect.py"
+    )
+
+
+@pytest.fixture(scope="session")
 def report_gen():
     return load_module("generate_report", REPO_ROOT / "report" / "generate_report.py")
 

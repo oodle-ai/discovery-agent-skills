@@ -1,0 +1,117 @@
+{
+  "schema_version": "1.0",
+  "company": "Acme Corp (fictional sample)",
+  "team_size": "8 engineers",
+  "environments": [
+    {
+      "name": "production",
+      "kind": "prod",
+      "cloud": "aws",
+      "region": "us-east-1",
+      "cluster": "prod-eks",
+      "nodes": 24,
+      "services": 31
+    },
+    {
+      "name": "staging",
+      "kind": "staging",
+      "cloud": "aws",
+      "region": "us-east-1",
+      "cluster": "stg-eks",
+      "nodes": 6,
+      "services": 28
+    }
+  ],
+  "tech_stack": {
+    "languages": [
+      "Go",
+      "Python"
+    ],
+    "databases": [
+      "PostgreSQL",
+      "Redis"
+    ],
+    "messaging": [
+      "Kafka"
+    ],
+    "infra": [
+      "Terraform",
+      "Helm"
+    ],
+    "other": []
+  },
+  "infra_inventory": {
+    "kubernetes_clusters": 2,
+    "total_nodes": 30,
+    "total_services": 59,
+    "instance_families": [
+      "m6i",
+      "r6i"
+    ],
+    "managed_services": [
+      {
+        "type": "RDS",
+        "count": 4,
+        "notes": null
+      },
+      {
+        "type": "Amazon OpenSearch Service",
+        "count": 1,
+        "notes": "3-node cluster in us-east-1"
+      }
+    ],
+    "regions": [
+      "us-east-1"
+    ]
+  },
+  "observability_stack": [
+    {
+      "signal": "logs",
+      "tools": [
+        "OpenSearch"
+      ],
+      "notes": "Centralized log storage via Data Prepper"
+    },
+    {
+      "signal": "traces",
+      "tools": [
+        "OpenSearch"
+      ],
+      "notes": "OTel traces via Data Prepper into OpenSearch"
+    },
+    {
+      "signal": "alerting",
+      "tools": [
+        "OpenSearch Alerting",
+        "PagerDuty"
+      ],
+      "notes": null
+    },
+    {
+      "signal": "dashboards",
+      "tools": [
+        "OpenSearch Dashboards"
+      ],
+      "notes": null
+    }
+  ],
+  "pain_points": [
+    {
+      "title": "Shard sprawl",
+      "detail": "Many small daily indices creating excessive shard counts; approaching cluster shard limit.",
+      "recommendation": "Consolidate indices with ISM rollover policies or switch to data streams."
+    }
+  ],
+  "user_reported": [
+    {
+      "label": "OpenSearch cluster cost",
+      "value": "$1,200/mo (3x r6g.xlarge.search)",
+      "area": "cost",
+      "notes": null
+    }
+  ],
+  "skipped_collectors": [],
+  "narrative": {
+    "overview": "Two AWS EKS environments using managed OpenSearch Service for centralized logging and tracing via Data Prepper."
+  }
+}
