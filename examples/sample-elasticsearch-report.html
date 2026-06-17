@@ -163,8 +163,8 @@
 <details class="deep-dive"><summary>elasticsearch — collected details</summary><div class="deep-dive-body"><p class="muted">Detected: detected_backend=elasticsearch, version=8.12.0, cluster_name=test-cluster</p>
 <div class="table-wrap"><table><thead><tr><th>Figure</th><th>Value</th><th>Status</th><th>Method / Reason</th><th>Window</th></tr></thead><tbody>
 <tr><td>Total documents</td><td>12.50M docs</td><td><span class="status-badge status-ok">ok</span></td><td>sum of docs.count across all indices</td><td>—</td></tr>
-<tr><td>Total store size (primary + replica)</td><td>45.05 GB</td><td><span class="status-badge status-ok">ok</span></td><td>sum of store.size across all indices, bytes -&gt; GB (1e9)</td><td>—</td></tr>
-<tr><td>Primary store size</td><td>22.52 GB</td><td><span class="status-badge status-ok">ok</span></td><td>sum of pri.store.size across all indices, bytes -&gt; GB (1e9)</td><td>—</td></tr>
+<tr><td>Total store size (primary + replica)</td><td>45.0 GB</td><td><span class="status-badge status-ok">ok</span></td><td>sum of store.size across all indices, bytes -&gt; GB (1e9)</td><td>—</td></tr>
+<tr><td>Primary store size</td><td>22.5 GB</td><td><span class="status-badge status-ok">ok</span></td><td>sum of pri.store.size across all indices, bytes -&gt; GB (1e9)</td><td>—</td></tr>
 <tr><td>Data nodes</td><td>3 nodes</td><td><span class="status-badge status-ok">ok</span></td><td>count of nodes with data roles from /_nodes/os,jvm</td><td>—</td></tr>
 <tr><td>Active shards</td><td>150 shards</td><td><span class="status-badge status-ok">ok</span></td><td>active_shards from /_cluster/health</td><td>—</td></tr>
 <tr><td>Daily ingestion (primary)</td><td>4.0 GB/day</td><td><span class="status-badge status-ok">ok</span></td><td>sum of pri.store.size for date-based indices in 5-day window / 5 days, bytes -&gt; GB (1e9); date parsed from index names</td><td>—</td></tr>
