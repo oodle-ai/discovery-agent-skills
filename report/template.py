@@ -242,7 +242,9 @@ def format_value(value: float | None, unit: str, status: str) -> str:
     prefix = "~" if status in ("estimated", "partial") else ""
     if unit == "USD":
         return f"{prefix}${human_number(value)}"
-    if unit.startswith("GB/"):
+    if unit.startswith("GB"):
+        if 0 < abs(value) < 0.1:
+            return f"{prefix}{value:,.2f} {unit}"
         return f"{prefix}{value:,.1f} {unit}"
     if "/" in unit or unit in ("series", "metrics", "hosts", "monitors"):
         return f"{prefix}{human_number(value)} {unit}"

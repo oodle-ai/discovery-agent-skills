@@ -31,8 +31,8 @@ deterministic collector script** (`collectors/<tool>/collect.py`) — not by the
   reason (e.g., `permission_denied`) and a remediation — never silently omitted, never guessed.
 - The report itself is rendered by `report/generate_report.py`; the agent cannot edit figures.
 
-Collector status: **Datadog**, **AWS CloudWatch**, **GCP Cloud Operations**, **Elasticsearch**, and **Kubernetes inventory** (nodes/vCPU/memory/services via kubectl) are available today. Prometheus/Thanos/VictoriaMetrics/Loki/Tempo,
-OpenSearch, and Mimir collectors are in progress;
+Collector status: **Datadog**, **AWS CloudWatch**, **GCP Cloud Operations**, **Elasticsearch**, **OpenSearch**, and **Kubernetes inventory** (nodes/vCPU/memory/services via kubectl) are available today. Prometheus/Thanos/VictoriaMetrics/Loki/Tempo
+and Mimir collectors are in progress;
 until they ship, those tools are covered by user-reported numbers, clearly marked as unverified.
 
 ## Install
@@ -105,6 +105,8 @@ Raw evidence lives in `./discovery-output/` so any figure can be re-derived offl
 **See a sample GCP Cloud Operations report:** [preview it in your browser](https://htmlpreview.github.io/?https://github.com/oodle-ai/discovery-agent-skills/blob/main/examples/sample-gcp-report.html) ([source](examples/sample-gcp-report.html)) — generated from the synthetic test fixtures in this repo.
 
 **See a sample Elasticsearch report:** [preview it in your browser](https://htmlpreview.github.io/?https://github.com/oodle-ai/discovery-agent-skills/blob/main/examples/sample-elasticsearch-report.html) ([source](examples/sample-elasticsearch-report.html)) — generated from the synthetic test fixtures in this repo.
+
+**See a sample OpenSearch report:** [preview it in your browser](https://htmlpreview.github.io/?https://github.com/oodle-ai/discovery-agent-skills/blob/main/examples/sample-opensearch-report.html) ([source](examples/sample-opensearch-report.html)) — generated from the synthetic test fixtures in this repo.
 
 ## Requirements
 
