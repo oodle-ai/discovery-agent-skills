@@ -3,8 +3,8 @@
   "collector": "elasticsearch",
   "collector_version": "1.0.0",
   "run": {
-    "started_at": "2026-06-17T09:16:50Z",
-    "finished_at": "2026-06-17T09:16:50Z",
+    "started_at": "2026-06-17T09:37:04Z",
+    "finished_at": "2026-06-17T09:37:04Z",
     "target": "report-only",
     "lookback": "7d",
     "args_redacted": {
@@ -25,7 +25,7 @@
     {
       "id": "elasticsearch.total_docs",
       "label": "Total documents",
-      "value": 10000500.0,
+      "value": 12500500.0,
       "unit": "docs",
       "status": "ok",
       "method": "sum of docs.count across all indices",
@@ -42,7 +42,7 @@
     {
       "id": "elasticsearch.total_store_size_gb",
       "label": "Total store size (primary + replica)",
-      "value": 40.05,
+      "value": 45.05,
       "unit": "GB",
       "status": "ok",
       "method": "sum of store.size across all indices, bytes -> GB (1e9)",
@@ -59,7 +59,7 @@
     {
       "id": "elasticsearch.primary_store_size_gb",
       "label": "Primary store size",
-      "value": 20.02,
+      "value": 22.52,
       "unit": "GB",
       "status": "ok",
       "method": "sum of pri.store.size across all indices, bytes -> GB (1e9)",
@@ -114,6 +114,42 @@
       "unit": "GB/day",
       "status": "ok",
       "method": "sum of pri.store.size for date-based indices in 5-day window / 5 days, bytes -> GB (1e9); date parsed from index names",
+      "source_api": "GET /_cat/indices + GET /_all/_settings",
+      "query": null,
+      "time_window": null,
+      "evidence_files": [
+        "evidence/cat_indices.json",
+        "evidence/index_settings.json"
+      ],
+      "notes": null,
+      "unavailable_reason": null,
+      "remediation": null
+    },
+    {
+      "id": "traces.ingest_gb_per_day",
+      "label": "APM trace ingestion (primary)",
+      "value": 0.5,
+      "unit": "GB/day",
+      "status": "ok",
+      "method": "sum of pri.store.size / docs.count for APM trace indices (traces-apm, .ds-traces-apm, apm-) in 5-day window",
+      "source_api": "GET /_cat/indices + GET /_all/_settings",
+      "query": null,
+      "time_window": null,
+      "evidence_files": [
+        "evidence/cat_indices.json",
+        "evidence/index_settings.json"
+      ],
+      "notes": null,
+      "unavailable_reason": null,
+      "remediation": null
+    },
+    {
+      "id": "traces.spans_per_day",
+      "label": "APM spans per day",
+      "value": 500000.0,
+      "unit": "spans/day",
+      "status": "ok",
+      "method": "sum of pri.store.size / docs.count for APM trace indices (traces-apm, .ds-traces-apm, apm-) in 5-day window",
       "source_api": "GET /_cat/indices + GET /_all/_settings",
       "query": null,
       "time_window": null,
@@ -210,6 +246,14 @@
         "latest_date": "2026-06-16"
       },
       {
+        "pattern": "traces-apm-default-*",
+        "index_count": 5,
+        "total_docs": 2500000,
+        "total_size_bytes": 5000000000,
+        "primary_size_bytes": 2500000000,
+        "latest_date": "2026-06-16"
+      },
+      {
         "pattern": ".kibana_8.12.0_001",
         "index_count": 1,
         "total_docs": 500,
@@ -299,6 +343,51 @@
     ],
     "snapshot_repositories": [
       "s3-backups"
+    ],
+    "snapshots": [
+      {
+        "repository": "s3-backups",
+        "snapshot": "daily-2026.06.16",
+        "state": "SUCCESS"
+      },
+      {
+        "repository": "s3-backups",
+        "snapshot": "daily-2026.06.15",
+        "state": "SUCCESS"
+      }
+    ],
+    "apm_traces": {
+      "index_count": 5,
+      "total_spans": 2500000,
+      "total_primary_size_gb": 2.5
+    },
+    "saved_objects_summary": {
+      "dashboard": 3,
+      "visualization": 5,
+      "search": 2,
+      "index-pattern": 4,
+      "lens": 8,
+      "map": 1
+    },
+    "data_views": [
+      {
+        "id": "dv-1",
+        "title": "logs-*",
+        "name": "Logs",
+        "timeFieldName": "@timestamp"
+      },
+      {
+        "id": "dv-2",
+        "title": "metrics-*",
+        "name": "Metrics",
+        "timeFieldName": "@timestamp"
+      },
+      {
+        "id": "dv-3",
+        "title": "traces-apm-*",
+        "name": "APM Traces",
+        "timeFieldName": "@timestamp"
+      }
     ]
   },
   "gaps": []

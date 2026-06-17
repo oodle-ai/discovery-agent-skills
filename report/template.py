@@ -217,6 +217,13 @@ def deep_dive(title: str, inner: str) -> str:
     )
 
 
+def human_bytes(n: int | float) -> str:
+    for unit, threshold in [("TB", 1e12), ("GB", 1e9), ("MB", 1e6), ("KB", 1e3)]:
+        if abs(n) >= threshold:
+            return f"{n / threshold:.1f} {unit}"
+    return f"{int(n)} B"
+
+
 def human_number(n: float) -> str:
     if n >= 1e9:
         return f"{n / 1e9:.2f}B"

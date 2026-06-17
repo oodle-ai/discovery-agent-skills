@@ -30,14 +30,27 @@ TOTAL_STORE_BYTES = NUM_DATE_INDICES * PRI_BYTES_PER_INDEX * (1 + REPLICAS)  # 4
 TOTAL_PRI_BYTES = NUM_DATE_INDICES * PRI_BYTES_PER_INDEX  # 20 GB
 INGEST_GB_PER_DAY = TOTAL_PRI_BYTES / DAYS_WITH_DATA / 1e9  # 4.0 GB/day
 
+# APM trace indices: 5 days, 1 index per day, 500 MB primary each, 500K spans each
+NUM_APM_INDICES = 5
+APM_PRI_BYTES_PER_INDEX = 500_000_000  # 500 MB
+APM_DOCS_PER_INDEX = 500_000
+APM_REPLICAS = 1
+APM_DAYS_WITH_DATA = 5
+
+APM_TOTAL_DOCS = NUM_APM_INDICES * APM_DOCS_PER_INDEX  # 2.5M spans
+APM_TOTAL_STORE = NUM_APM_INDICES * APM_PRI_BYTES_PER_INDEX * (1 + APM_REPLICAS)  # 5 GB
+APM_TOTAL_PRI = NUM_APM_INDICES * APM_PRI_BYTES_PER_INDEX  # 2.5 GB
+APM_INGEST_GB_PER_DAY = APM_TOTAL_PRI / APM_DAYS_WITH_DATA / 1e9  # 0.5 GB/day
+APM_SPANS_PER_DAY = APM_TOTAL_DOCS / APM_DAYS_WITH_DATA  # 500K spans/day
+
 # system index (excluded from ingestion calc, included in totals)
 SYSTEM_DOCS = 500
 SYSTEM_STORE_BYTES = 50_000_000  # 50 MB
 SYSTEM_PRI_BYTES = 25_000_000
 
-GRAND_TOTAL_DOCS = TOTAL_DATE_DOCS + SYSTEM_DOCS
-GRAND_TOTAL_STORE = TOTAL_STORE_BYTES + SYSTEM_STORE_BYTES
-GRAND_TOTAL_PRI = TOTAL_PRI_BYTES + SYSTEM_PRI_BYTES
+GRAND_TOTAL_DOCS = TOTAL_DATE_DOCS + APM_TOTAL_DOCS + SYSTEM_DOCS
+GRAND_TOTAL_STORE = TOTAL_STORE_BYTES + APM_TOTAL_STORE + SYSTEM_STORE_BYTES
+GRAND_TOTAL_PRI = TOTAL_PRI_BYTES + APM_TOTAL_PRI + SYSTEM_PRI_BYTES
 
 
 # ── helpers ─────────────────────────────────────────────────────────────
@@ -68,6 +81,24 @@ def _make_date_indices() -> list[dict]:
                 "store.size": str(PRI_BYTES_PER_INDEX * (1 + REPLICAS)),
                 "pri.store.size": str(PRI_BYTES_PER_INDEX),
             })
+    return indices
+
+
+def _make_apm_indices() -> list[dict]:
+    dates = _recent_dates(APM_DAYS_WITH_DATA)
+    indices = []
+    for day_date in dates:
+        indices.append({
+            "index": f"traces-apm-default-{day_date}",
+            "health": "green",
+            "status": "open",
+            "pri": "2",
+            "rep": str(APM_REPLICAS),
+            "docs.count": str(APM_DOCS_PER_INDEX),
+            "docs.deleted": "0",
+            "store.size": str(APM_PRI_BYTES_PER_INDEX * (1 + APM_REPLICAS)),
+            "pri.store.size": str(APM_PRI_BYTES_PER_INDEX),
+        })
     return indices
 
 
@@ -187,7 +218,7 @@ NODES_INFO = {
 
 
 def cat_indices() -> list[dict]:
-    return _make_date_indices() + [_make_system_index()]
+    return _make_date_indices() + _make_apm_indices() + [_make_system_index()]
 
 
 def index_settings() -> dict:

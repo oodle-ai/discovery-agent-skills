@@ -63,6 +63,10 @@ EXPECTED = [
     ExpectedFigure("logs.ingest_gb_per_day", "Daily ingestion (primary)", "GB/day", "logs"),
     ExpectedFigure("hosts.count", "Data nodes", "nodes", "hosts"),
     ExpectedFigure("elasticsearch.total_shards", "Active shards", "shards", "elasticsearch"),
+    ExpectedFigure(
+        "traces.ingest_gb_per_day", "APM trace ingestion (primary)", "GB/day", "traces"
+    ),
+    ExpectedFigure("traces.spans_per_day", "APM spans per day", "spans/day", "traces"),
 ]
 
 ES_ENDPOINTS: list[tuple[str, str]] = [
@@ -108,6 +112,16 @@ _DATE_RE_STRIP = [
 ]
 
 DATA_ROLES = {"data", "data_content", "data_hot", "data_warm", "data_cold", "data_frozen"}
+
+APM_INDEX_PREFIXES = (
+    "traces-apm",
+    ".ds-traces-apm",
+    "apm-",
+)
+
+
+def _is_apm_index(name: str) -> bool:
+    return any(name.startswith(p) for p in APM_INDEX_PREFIXES)
 
 
 # ── helpers ─────────────────────────────────────────────────────────────
@@ -323,7 +337,7 @@ def derive_daily_ingestion(
 
     for idx in cat_indices:
         name = idx.get("index", "")
-        if name.startswith("."):
+        if name.startswith(".") or _is_apm_index(name):
             continue
         from_name = _parse_date_from_name(name)
         date = from_name or _creation_date_str(name, settings)
@@ -361,6 +375,52 @@ def derive_daily_ingestion(
         key=lambda x: x["date"],
     )
     return round(gb_per_day, 2), status, method, daily
+
+
+def derive_apm_traces(
+    results: dict[str, Any],
+    lookback_days: float,
+) -> tuple[float | None, float | None, str, str]:
+    """Derive APM trace volume from trace indices.
+
+    Returns (gb_per_day | None, spans_per_day | None, status, method).
+    """
+    cat_indices = results.get("cat_indices")
+    settings = results.get("index_settings") or {}
+    if not cat_indices or not isinstance(cat_indices, list):
+        return None, None, "unavailable", ""
+
+    now = datetime.now(UTC)
+    cutoff = (now - timedelta(days=lookback_days)).strftime("%Y-%m-%d")
+    today = now.strftime("%Y-%m-%d")
+
+    by_day_bytes: dict[str, int] = defaultdict(int)
+    by_day_docs: dict[str, int] = defaultdict(int)
+
+    for idx in cat_indices:
+        name = idx.get("index", "")
+        if not _is_apm_index(name):
+            continue
+        date = _parse_date_from_name(name) or _creation_date_str(name, settings)
+        if not date or date < cutoff or date > today:
+            continue
+        by_day_bytes[date] += _safe_int(idx.get("pri.store.size"))
+        by_day_docs[date] += _safe_int(idx.get("docs.count"))
+
+    if not by_day_bytes:
+        return None, None, "unavailable", ""
+
+    num_days = len(by_day_bytes)
+    total_bytes = sum(by_day_bytes.values())
+    total_docs = sum(by_day_docs.values())
+    gb_per_day = round(total_bytes / num_days / 1e9, 2)
+    spans_per_day = round(total_docs / num_days)
+    status = "ok" if num_days >= 3 else "estimated"
+    method = (
+        f"sum of pri.store.size / docs.count for APM trace indices "
+        f"({', '.join(APM_INDEX_PREFIXES)}) in {num_days}-day window"
+    )
+    return gb_per_day, spans_per_day, status, method
 
 
 def group_index_patterns(
@@ -599,6 +659,50 @@ def build_summary(
             "or have creation_date in settings",
         )
 
+    # ── traces (APM) ───────────────────────────────────────────────
+    trace_evidence = ["evidence/cat_indices.json"]
+    if results.get("index_settings"):
+        trace_evidence.append("evidence/index_settings.json")
+    trace_gb, trace_spans, trace_status, trace_method = derive_apm_traces(
+        results, lookback_days
+    )
+    if trace_gb is not None:
+        summary.add_figure(Figure(
+            id="traces.ingest_gb_per_day",
+            label="APM trace ingestion (primary)",
+            value=trace_gb,
+            unit="GB/day",
+            status=trace_status,
+            method=trace_method,
+            source_api="GET /_cat/indices + GET /_all/_settings",
+            evidence_files=trace_evidence,
+        ))
+        summary.add_figure(Figure(
+            id="traces.spans_per_day",
+            label="APM spans per day",
+            value=float(trace_spans),
+            unit="spans/day",
+            status=trace_status,
+            method=trace_method,
+            source_api="GET /_cat/indices + GET /_all/_settings",
+            evidence_files=trace_evidence,
+        ))
+    else:
+        summary.mark_unavailable(
+            "traces.ingest_gb_per_day",
+            "not_configured",
+            "no APM trace indices found (traces-apm-*, .ds-traces-apm-*, apm-*)",
+            remediation="if Elastic APM is in use, ensure trace indices exist and are "
+            "within the lookback window",
+        )
+        summary.mark_unavailable(
+            "traces.spans_per_day",
+            "not_configured",
+            "no APM trace indices found (traces-apm-*, .ds-traces-apm-*, apm-*)",
+            remediation="if Elastic APM is in use, ensure trace indices exist and are "
+            "within the lookback window",
+        )
+
     # ── environment ─────────────────────────────────────────────────
     cluster_stats = results.get("cluster_stats") or {}
     cluster_health = results.get("cluster_health") or {}
@@ -712,6 +816,35 @@ def build_summary(
     snap_repos = results.get("snapshot_repos")
     if isinstance(snap_repos, dict):
         inv["snapshot_repositories"] = list(snap_repos.keys())
+
+    # snapshot details
+    snap_details = results.get("snapshot_details")
+    if snap_details:
+        snap_summary = []
+        for repo in snap_details:
+            snaps = repo.get("snapshots", {})
+            snap_list = snaps.get("snapshots", snaps) if isinstance(snaps, dict) else snaps
+            if isinstance(snap_list, list):
+                for s in snap_list:
+                    snap_summary.append({
+                        "repository": repo.get("repository", ""),
+                        "snapshot": s.get("snapshot", ""),
+                        "state": s.get("state", ""),
+                    })
+        if snap_summary:
+            inv["snapshots"] = snap_summary
+
+    # APM trace indices summary
+    if isinstance(cat_indices, list):
+        apm_indices = [i for i in cat_indices if _is_apm_index(i.get("index", ""))]
+        if apm_indices:
+            total_docs = sum(_safe_int(i.get("docs.count")) for i in apm_indices)
+            total_pri = sum(_safe_int(i.get("pri.store.size")) for i in apm_indices)
+            inv["apm_traces"] = {
+                "index_count": len(apm_indices),
+                "total_spans": total_docs,
+                "total_primary_size_gb": round(total_pri / 1e9, 2),
+            }
 
 
 # ── main ────────────────────────────────────────────────────────────────

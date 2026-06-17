@@ -144,29 +144,32 @@
 <div class="summary-card" data-tip="elasticsearch: 3 nodes (ok)"><div class="value">3 hosts</div><div class="label">Hosts (monitored)</div></div>
 <div class="summary-card" data-tip="no measured figure; see Coverage &amp; Gaps"><div class="value">—</div><div class="label">Custom Metrics</div></div>
 <div class="summary-card" data-tip="elasticsearch: 4.0 GB/day (ok)"><div class="value">4.0 GB/day</div><div class="label">Log Volume</div></div>
-<div class="summary-card" data-tip="no measured figure; see Coverage &amp; Gaps"><div class="value">—</div><div class="label">Trace Volume</div></div>
+<div class="summary-card" data-tip="elasticsearch: 500.0K spans/day (ok)"><div class="value">500.0K spans/day</div><div class="label">Trace Spans</div></div>
 <div class="summary-card" data-tip="no measured figure; see Coverage &amp; Gaps"><div class="value">—</div><div class="label">Est. Observability Spend</div></div>
 <div class="summary-card"><div class="value">—</div><div class="label">Team Size</div></div></div>
 <div class="section"><h2>Observability Stack &amp; Scale</h2>
 <div class="table-wrap"><table><thead><tr><th>Signal</th><th>Tools</th><th>Measured Scale (source shown; hover for detail)</th></tr></thead><tbody>
 <tr><td>Logs</td><td>—</td><td><span data-tip="elasticsearch: 4.0 GB/day (ok)">4 GB/day ingested <span class="muted">· elasticsearch</span></span> <span class="status-badge status-ok">ok</span></td></tr>
+<tr><td>Traces</td><td>—</td><td><span data-tip="elasticsearch: 500.0K spans/day (ok)">500.0K spans/day <span class="muted">· elasticsearch</span></span> <span class="status-badge status-ok">ok</span><br><span data-tip="elasticsearch: 0.5 GB/day (ok)">0.50 GB/day ingested <span class="muted">· elasticsearch</span></span> <span class="status-badge status-ok">ok</span></td></tr>
 </tbody></table></div>
 </div>
 <div class="section" id="coverage"><h2>Coverage &amp; Gaps</h2>
 <div class="table-wrap"><table><thead><tr><th>Collector</th><th>Figures collected</th><th>Target</th><th>Lookback</th></tr></thead><tbody>
-<tr><td>elasticsearch</td><td>6/6</td><td>report-only</td><td>7d</td></tr>
+<tr><td>elasticsearch</td><td>8/8</td><td>report-only</td><td>7d</td></tr>
 </tbody></table></div>
 <p class="muted">No gaps — all expected figures were collected.</p>
 </div>
 <h2 style='margin:2rem 0 0.5rem'>Deep Dives</h2>
 <details class="deep-dive"><summary>elasticsearch — collected details</summary><div class="deep-dive-body"><p class="muted">Detected: detected_backend=elasticsearch, version=8.12.0, cluster_name=test-cluster</p>
 <div class="table-wrap"><table><thead><tr><th>Figure</th><th>Value</th><th>Status</th><th>Method / Reason</th><th>Window</th></tr></thead><tbody>
-<tr><td>Total documents</td><td>10.00M docs</td><td><span class="status-badge status-ok">ok</span></td><td>sum of docs.count across all indices</td><td>—</td></tr>
-<tr><td>Total store size (primary + replica)</td><td>40.05 GB</td><td><span class="status-badge status-ok">ok</span></td><td>sum of store.size across all indices, bytes -&gt; GB (1e9)</td><td>—</td></tr>
-<tr><td>Primary store size</td><td>20.02 GB</td><td><span class="status-badge status-ok">ok</span></td><td>sum of pri.store.size across all indices, bytes -&gt; GB (1e9)</td><td>—</td></tr>
+<tr><td>Total documents</td><td>12.50M docs</td><td><span class="status-badge status-ok">ok</span></td><td>sum of docs.count across all indices</td><td>—</td></tr>
+<tr><td>Total store size (primary + replica)</td><td>45.05 GB</td><td><span class="status-badge status-ok">ok</span></td><td>sum of store.size across all indices, bytes -&gt; GB (1e9)</td><td>—</td></tr>
+<tr><td>Primary store size</td><td>22.52 GB</td><td><span class="status-badge status-ok">ok</span></td><td>sum of pri.store.size across all indices, bytes -&gt; GB (1e9)</td><td>—</td></tr>
 <tr><td>Data nodes</td><td>3 nodes</td><td><span class="status-badge status-ok">ok</span></td><td>count of nodes with data roles from /_nodes/os,jvm</td><td>—</td></tr>
 <tr><td>Active shards</td><td>150 shards</td><td><span class="status-badge status-ok">ok</span></td><td>active_shards from /_cluster/health</td><td>—</td></tr>
 <tr><td>Daily ingestion (primary)</td><td>4.0 GB/day</td><td><span class="status-badge status-ok">ok</span></td><td>sum of pri.store.size for date-based indices in 5-day window / 5 days, bytes -&gt; GB (1e9); date parsed from index names</td><td>—</td></tr>
+<tr><td>APM trace ingestion (primary)</td><td>0.5 GB/day</td><td><span class="status-badge status-ok">ok</span></td><td>sum of pri.store.size / docs.count for APM trace indices (traces-apm, .ds-traces-apm, apm-) in 5-day window</td><td>—</td></tr>
+<tr><td>APM spans per day</td><td>500.0K spans/day</td><td><span class="status-badge status-ok">ok</span></td><td>sum of pri.store.size / docs.count for APM trace indices (traces-apm, .ds-traces-apm, apm-) in 5-day window</td><td>—</td></tr>
 </tbody></table></div>
 <div class="table-wrap"><table><thead><tr><th>Fact</th><th>Value</th></tr></thead><tbody>
 <tr><td>Cluster name</td><td>test-cluster</td></tr>
@@ -174,22 +177,23 @@
 <tr><td>Number of nodes</td><td>3</td></tr>
 <tr><td>Number of data nodes</td><td>3</td></tr>
 <tr><td>Unassigned shards</td><td>0</td></tr>
-<tr><td>Cluster memory bytes</td><td>48000000000</td></tr>
-<tr><td>Cluster disk total bytes</td><td>3000000000000</td></tr>
-<tr><td>Cluster disk available bytes</td><td>2000000000000</td></tr>
-<tr><td>Cluster jvm heap max bytes</td><td>24000000000</td></tr>
+<tr><td>Cluster memory</td><td>48.0 GB</td></tr>
+<tr><td>Cluster disk total</td><td>3.0 TB</td></tr>
+<tr><td>Cluster disk available</td><td>2.0 TB</td></tr>
+<tr><td>Cluster jvm heap max</td><td>24.0 GB</td></tr>
 </tbody></table></div>
 <h3>Node fleet</h3>
-<div class="table-wrap"><table><thead><tr><th>name</th><th>roles</th><th>cpu count</th><th>ram total bytes</th><th>ram used percent</th><th>heap max bytes</th><th>heap used percent</th><th>disk total bytes</th><th>disk available bytes</th><th>disk used percent</th></tr></thead><tbody>
-<tr><td>es-data-0</td><td>[&#x27;data&#x27;, &#x27;data_content&#x27;, &#x27;data_hot&#x27;, &#x27;ingest&#x27;, &#x27;master&#x27;]</td><td>8</td><td>16000000000</td><td>72</td><td>8000000000</td><td>50.0</td><td>1000000000000</td><td>600000000000</td><td>40.0</td></tr>
-<tr><td>es-data-1</td><td>[&#x27;data&#x27;, &#x27;data_content&#x27;, &#x27;data_hot&#x27;, &#x27;ingest&#x27;, &#x27;master&#x27;]</td><td>8</td><td>16000000000</td><td>72</td><td>8000000000</td><td>50.0</td><td>1000000000000</td><td>600000000000</td><td>40.0</td></tr>
-<tr><td>es-data-2</td><td>[&#x27;data&#x27;, &#x27;data_content&#x27;, &#x27;data_hot&#x27;, &#x27;ingest&#x27;, &#x27;master&#x27;]</td><td>8</td><td>16000000000</td><td>72</td><td>8000000000</td><td>50.0</td><td>1000000000000</td><td>600000000000</td><td>40.0</td></tr>
+<div class="table-wrap"><table><thead><tr><th>name</th><th>roles</th><th>cpu count</th><th>ram total</th><th>ram used percent</th><th>heap max</th><th>heap used percent</th><th>disk total</th><th>disk available</th><th>disk used percent</th></tr></thead><tbody>
+<tr><td>es-data-0</td><td>data, data_content, data_hot, ingest, master</td><td>8</td><td>16.0 GB</td><td>72</td><td>8.0 GB</td><td>50.0</td><td>1.0 TB</td><td>600.0 GB</td><td>40.0</td></tr>
+<tr><td>es-data-1</td><td>data, data_content, data_hot, ingest, master</td><td>8</td><td>16.0 GB</td><td>72</td><td>8.0 GB</td><td>50.0</td><td>1.0 TB</td><td>600.0 GB</td><td>40.0</td></tr>
+<tr><td>es-data-2</td><td>data, data_content, data_hot, ingest, master</td><td>8</td><td>16.0 GB</td><td>72</td><td>8.0 GB</td><td>50.0</td><td>1.0 TB</td><td>600.0 GB</td><td>40.0</td></tr>
 </tbody></table></div>
 <h3>Index patterns</h3>
-<div class="table-wrap"><table><thead><tr><th>pattern</th><th>index count</th><th>total docs</th><th>total size bytes</th><th>primary size bytes</th><th>latest date</th></tr></thead><tbody>
-<tr><td>logs-app-*</td><td>5</td><td>5000000</td><td>20000000000</td><td>10000000000</td><td>2026-06-16</td></tr>
-<tr><td>metrics-infra-*</td><td>5</td><td>5000000</td><td>20000000000</td><td>10000000000</td><td>2026-06-16</td></tr>
-<tr><td>.kibana_8.12.0_001</td><td>1</td><td>500</td><td>50000000</td><td>25000000</td><td>2026-05-18</td></tr>
+<div class="table-wrap"><table><thead><tr><th>pattern</th><th>index count</th><th>total docs</th><th>total size</th><th>primary size</th><th>latest date</th></tr></thead><tbody>
+<tr><td>logs-app-*</td><td>5</td><td>5000000</td><td>20.0 GB</td><td>10.0 GB</td><td>2026-06-16</td></tr>
+<tr><td>metrics-infra-*</td><td>5</td><td>5000000</td><td>20.0 GB</td><td>10.0 GB</td><td>2026-06-16</td></tr>
+<tr><td>traces-apm-default-*</td><td>5</td><td>2500000</td><td>5.0 GB</td><td>2.5 GB</td><td>2026-06-16</td></tr>
+<tr><td>.kibana_8.12.0_001</td><td>1</td><td>500</td><td>50.0 MB</td><td>25.0 MB</td><td>2026-05-18</td></tr>
 </tbody></table></div>
 <h3>Daily ingestion</h3>
 <div class="table-wrap"><table><thead><tr><th>date</th><th>primary gb</th></tr></thead><tbody>
@@ -212,8 +216,8 @@
 </tbody></table></div>
 <h3>Ilm policies</h3>
 <div class="table-wrap"><table><thead><tr><th>name</th><th>phases</th><th>hot min age</th><th>rollover</th><th>warm min age</th><th>delete min age</th></tr></thead><tbody>
-<tr><td>logs-policy</td><td>[&#x27;hot&#x27;, &#x27;warm&#x27;, &#x27;delete&#x27;]</td><td>0ms</td><td>{&#x27;max_size&#x27;: &#x27;50gb&#x27;, &#x27;max_age&#x27;: &#x27;1d&#x27;}</td><td>7d</td><td>30d</td></tr>
-<tr><td>metrics-policy</td><td>[&#x27;hot&#x27;, &#x27;delete&#x27;]</td><td>0ms</td><td>{&#x27;max_age&#x27;: &#x27;7d&#x27;}</td><td>—</td><td>90d</td></tr>
+<tr><td>logs-policy</td><td>hot, warm, delete</td><td>0ms</td><td>{&#x27;max_size&#x27;: &#x27;50gb&#x27;, &#x27;max_age&#x27;: &#x27;1d&#x27;}</td><td>7d</td><td>30d</td></tr>
+<tr><td>metrics-policy</td><td>hot, delete</td><td>0ms</td><td>{&#x27;max_age&#x27;: &#x27;7d&#x27;}</td><td>—</td><td>90d</td></tr>
 </tbody></table></div>
 <h3>Rest api usage</h3>
 <div class="table-wrap"><table><thead><tr><th>action</th><th>count</th></tr></thead><tbody>
@@ -222,7 +226,33 @@
 <tr><td>cluster:monitor/health</td><td>30000</td></tr>
 <tr><td>indices:admin/refresh[s]</td><td>15000</td></tr>
 </tbody></table></div>
-<p><strong>Snapshot repositories:</strong> <span class="tag tag-gray">s3-backups</span></p></div></details>
+<p><strong>Snapshot repositories:</strong> <span class="tag tag-gray">s3-backups</span></p>
+<h3>Snapshots</h3>
+<div class="table-wrap"><table><thead><tr><th>repository</th><th>snapshot</th><th>state</th></tr></thead><tbody>
+<tr><td>s3-backups</td><td>daily-2026.06.16</td><td>SUCCESS</td></tr>
+<tr><td>s3-backups</td><td>daily-2026.06.15</td><td>SUCCESS</td></tr>
+</tbody></table></div>
+<h3>Apm traces</h3>
+<div class="table-wrap"><table><thead><tr><th>Key</th><th>Value</th></tr></thead><tbody>
+<tr><td>index_count</td><td>5</td></tr>
+<tr><td>total_spans</td><td>2500000</td></tr>
+<tr><td>total_primary_size_gb</td><td>2.5</td></tr>
+</tbody></table></div>
+<h3>Saved objects summary</h3>
+<div class="table-wrap"><table><thead><tr><th>Key</th><th>Value</th></tr></thead><tbody>
+<tr><td>dashboard</td><td>3</td></tr>
+<tr><td>visualization</td><td>5</td></tr>
+<tr><td>search</td><td>2</td></tr>
+<tr><td>index-pattern</td><td>4</td></tr>
+<tr><td>lens</td><td>8</td></tr>
+<tr><td>map</td><td>1</td></tr>
+</tbody></table></div>
+<h3>Data views</h3>
+<div class="table-wrap"><table><thead><tr><th>id</th><th>title</th><th>name</th><th>timeFieldName</th></tr></thead><tbody>
+<tr><td>dv-1</td><td>logs-*</td><td>Logs</td><td>@timestamp</td></tr>
+<tr><td>dv-2</td><td>metrics-*</td><td>Metrics</td><td>@timestamp</td></tr>
+<tr><td>dv-3</td><td>traces-apm-*</td><td>APM Traces</td><td>@timestamp</td></tr>
+</tbody></table></div></div></details>
 <div class="section"><h2>Provenance Appendix</h2>
 <p class="muted">Every measured figure below can be re-derived from the raw API response captured in the listed evidence file (under each collector's output directory).</p><div class="table-wrap"><table class="provenance"><thead><tr><th>Figure</th><th>Collector</th><th>Source API</th><th>Query</th><th>Evidence</th></tr></thead><tbody>
 <tr><td><code>elasticsearch.total_docs</code></td><td>elasticsearch</td><td>GET /_cat/indices</td><td>—</td><td><code>evidence/cat_indices.json</code></td></tr>
@@ -231,6 +261,8 @@
 <tr><td><code>hosts.count</code></td><td>elasticsearch</td><td>GET /_nodes/os,jvm</td><td>—</td><td><code>evidence/nodes_info.json</code></td></tr>
 <tr><td><code>elasticsearch.total_shards</code></td><td>elasticsearch</td><td>GET /_cluster/health</td><td>—</td><td><code>evidence/cluster_health.json</code></td></tr>
 <tr><td><code>logs.ingest_gb_per_day</code></td><td>elasticsearch</td><td>GET /_cat/indices + GET /_all/_settings</td><td>—</td><td><code>evidence/cat_indices.json</code><br><code>evidence/index_settings.json</code></td></tr>
+<tr><td><code>traces.ingest_gb_per_day</code></td><td>elasticsearch</td><td>GET /_cat/indices + GET /_all/_settings</td><td>—</td><td><code>evidence/cat_indices.json</code><br><code>evidence/index_settings.json</code></td></tr>
+<tr><td><code>traces.spans_per_day</code></td><td>elasticsearch</td><td>GET /_cat/indices + GET /_all/_settings</td><td>—</td><td><code>evidence/cat_indices.json</code><br><code>evidence/index_settings.json</code></td></tr>
 </tbody></table></div>
 </div>
 </div>

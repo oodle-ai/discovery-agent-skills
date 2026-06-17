@@ -62,7 +62,7 @@ class TestElasticsearchCollector:
 
         figs = figures_by_id(summary)
 
-        # total docs = date indices + system index
+        # total docs = date indices + APM indices + system index
         assert figs["elasticsearch.total_docs"]["value"] == fx.GRAND_TOTAL_DOCS
 
         # store sizes
@@ -84,6 +84,15 @@ class TestElasticsearchCollector:
             fx.INGEST_GB_PER_DAY, rel=0.01
         )
         assert figs["logs.ingest_gb_per_day"]["status"] == "ok"
+
+        # APM traces: 5 indices x 500MB / 5 days = 0.5 GB/day
+        assert figs["traces.ingest_gb_per_day"]["value"] == pytest.approx(
+            fx.APM_INGEST_GB_PER_DAY, rel=0.01
+        )
+        assert figs["traces.ingest_gb_per_day"]["status"] == "ok"
+        assert figs["traces.spans_per_day"]["value"] == pytest.approx(
+            fx.APM_SPANS_PER_DAY, rel=0.01
+        )
 
         # no gaps in a clean run
         assert summary["gaps"] == []
@@ -116,6 +125,8 @@ class TestElasticsearchCollector:
         assert inv["search_stats"]["avg_query_latency_ms"] == pytest.approx(5.0)
         assert len(inv["rest_api_usage"]) > 0
         assert inv["snapshot_repositories"] == ["s3-backups"]
+        assert inv["apm_traces"]["index_count"] == fx.NUM_APM_INDICES
+        assert inv["apm_traces"]["total_spans"] == fx.APM_TOTAL_DOCS
 
     def test_index_patterns_grouped(self, es_collect, tmp_path, monkeypatch, respx_mock):
         mock_es_direct(respx_mock)
@@ -162,6 +173,8 @@ class TestElasticsearchCollector:
         assert figs["elasticsearch.total_store_size_gb"]["status"] == "unavailable"
         assert figs["elasticsearch.primary_store_size_gb"]["status"] == "unavailable"
         assert figs["logs.ingest_gb_per_day"]["status"] == "unavailable"
+        assert figs["traces.ingest_gb_per_day"]["status"] == "unavailable"
+        assert figs["traces.spans_per_day"]["status"] == "unavailable"
 
     def test_skip_snapshots(self, es_collect, tmp_path, monkeypatch, respx_mock):
         mock_es_direct(respx_mock)
