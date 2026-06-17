@@ -1083,10 +1083,20 @@ def main() -> int:
             return 2
     else:
         dashboards_url = args.dashboards_url or credential(
-            None, "DASHBOARDS_URL", "Dashboards URL"
+            None,
+            "DASHBOARDS_URL",
+            "Dashboards URL (leave blank to connect directly via --os-url)",
         )
-        os_url = args.os_url or credential(None, "OS_URL", "OpenSearch URL")
-        os_host = args.os_host or credential(None, "OS_HOST", "OS host for proxy")
+        os_url = args.os_url or credential(
+            None,
+            "OS_URL",
+            "OpenSearch URL (e.g. https://opensearch:9200)",
+        )
+        os_host = args.os_host or credential(
+            None,
+            "OS_HOST",
+            "OS host for Dashboards proxy (leave blank for direct mode)",
+        )
 
         if not dashboards_url and not os_url:
             print(

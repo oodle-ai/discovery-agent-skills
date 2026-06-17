@@ -1,0 +1,123 @@
+services:
+  opensearch:
+    image: opensearchproject/opensearch:2.19.1
+    environment:
+      - discovery.type=single-node
+      - DISABLE_SECURITY_PLUGIN=true
+      - "OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m"
+      - cluster.name=discovery-test
+    ports:
+      - "9200:9200"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:9200/_cluster/health || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  seed:
+    image: opensearchproject/opensearch:2.19.1
+    depends_on:
+      opensearch:
+        condition: service_healthy
+    entrypoint: /bin/bash
+    command:
+      - -c
+      - |
+        set -e
+        OS=http://opensearch:9200
+
+        # Create ISM policy for logs retention
+        curl -sf -X PUT "$$OS/_plugins/_ism/policies/logs-policy" -H 'Content-Type: application/json' -d '{
+          "policy": {
+            "description": "Logs retention policy",
+            "default_state": "hot",
+            "states": [
+              {
+                "name": "hot",
+                "actions": [{"rollover": {"min_size": "50gb", "min_index_age": "1d"}}],
+                "transitions": [{"state_name": "delete", "conditions": {"min_index_age": "30d"}}]
+              },
+              {
+                "name": "delete",
+                "actions": [{"delete": {}}],
+                "transitions": []
+              }
+            ],
+            "ism_template": [{"index_patterns": ["logs-*"], "priority": 100}]
+          }
+        }'
+
+        # Create date-based indices with known doc counts (last 7 days)
+        # Use Python to generate bulk payloads with varied content to avoid compression
+        python3 -c "
+        import hashlib, json, subprocess, sys, datetime as dt
+
+        OS = 'http://opensearch:9200'
+        now = dt.datetime.now(dt.timezone.utc)
+        services = ['web-api','auth-svc','payment-svc','order-svc','search-svc','notification-svc']
+        levels = ['debug','info','info','info','warn','error']
+        paths = ['/api/v1/users','/api/v1/orders','/api/v1/search','/api/v1/payments','/health','/api/v2/catalog']
+        methods = ['GET','GET','GET','POST','PUT','DELETE']
+
+        for i in range(7):
+            d = now - dt.timedelta(days=i)
+            date_str = d.strftime('%Y.%m.%d')
+            date_iso = d.strftime('%Y-%m-%d')
+            index = f'logs-app-{date_str}'
+            print(f'Creating index {index}', flush=True)
+
+            # create index
+            subprocess.run(['curl','-sf','-X','PUT',f'{OS}/{index}','-H','Content-Type: application/json',
+                '-d',json.dumps({'settings':{'number_of_shards':2,'number_of_replicas':0}})],
+                capture_output=True)
+
+            # insert 10 batches of 1000 docs = 10k docs/index
+            for batch in range(10):
+                lines = []
+                for j in range(1000):
+                    seq = batch * 1000 + j
+                    # generate unique varied content per doc using hash
+                    uid = hashlib.md5(f'{date_str}-{seq}'.encode()).hexdigest()
+                    svc = services[seq % len(services)]
+                    lvl = levels[seq % len(levels)]
+                    path = paths[seq % len(paths)]
+                    method = methods[seq % len(methods)]
+                    status = [200,201,204,400,404,500][seq % 6]
+                    latency = 5 + (seq * 7 + batch * 13) % 2000
+                    # ~2 KB of varied content per doc
+                    doc = {
+                        '@timestamp': f'{date_iso}T{batch:02d}:{(seq//60)%60:02d}:{seq%60:02d}Z',
+                        'message': f'{method} {path} {status} {latency}ms - request_id={uid} service={svc} trace_hash={uid[::-1]} session={uid[8:24]} correlation={uid[16:]}',
+                        'level': lvl,
+                        'service': svc,
+                        'host': f'node-{seq % 5 + 1}',
+                        'request_id': uid,
+                        'method': method,
+                        'path': path,
+                        'status_code': status,
+                        'latency_ms': latency,
+                        'user_agent': f'Mozilla/5.0 (variant-{seq % 200}; rv:{50 + seq % 50}.0)',
+                        'region': ['us-east-1','us-west-2','eu-west-1','ap-southeast-1'][seq % 4],
+                        'trace_id': uid + uid[::-1],
+                        'span_id': uid[:16],
+                        'kubernetes': {'namespace': f'ns-{svc}', 'pod': f'{svc}-{uid[:8]}', 'container': svc, 'node': f'ip-10-0-{seq%256}-{(seq*3)%256}'},
+                    }
+                    lines.append(json.dumps({'index':{}}) + '\n' + json.dumps(doc) + '\n')
+                payload = ''.join(lines)
+                r = subprocess.run(['curl','-sf','-X','POST',f'{OS}/{index}/_bulk','-H','Content-Type: application/x-ndjson','--data-binary','@-'],
+                    input=payload.encode(), capture_output=True)
+            print(f' -> {index} seeded (10000 docs)', flush=True)
+        "
+        echo "Log indices done."
+
+        # Create a non-date index
+        curl -sf -X PUT "$$OS/config-store" -H 'Content-Type: application/json' -d '{
+          "settings": {"number_of_shards": 1, "number_of_replicas": 0}
+        }'
+        curl -sf -X POST "$$OS/config-store/_doc" -H 'Content-Type: application/json' -d '{"key": "test", "value": "data"}'
+
+        # Force refresh
+        curl -sf -X POST "$$OS/_refresh"
+        echo ""
+        echo "Seed complete. Index summary:"
+        curl -sf "$$OS/_cat/indices?v&bytes=b&s=index"

@@ -902,9 +902,21 @@ def main() -> int:
             print(f"ERROR: --report-only but no evidence under {ev.evidence_dir}")
             return 2
     else:
-        kibana_url = args.kibana_url or credential(None, "KIBANA_URL", "Kibana URL")
-        es_url = args.es_url or credential(None, "ES_URL", "Elasticsearch URL")
-        es_host = args.es_host or credential(None, "ES_HOST", "ES host for proxy")
+        kibana_url = args.kibana_url or credential(
+            None,
+            "KIBANA_URL",
+            "Kibana URL (leave blank to connect directly via --es-url)",
+        )
+        es_url = args.es_url or credential(
+            None,
+            "ES_URL",
+            "Elasticsearch URL (e.g. https://elasticsearch:9200)",
+        )
+        es_host = args.es_host or credential(
+            None,
+            "ES_HOST",
+            "ES host for Kibana proxy (leave blank for direct mode)",
+        )
 
         if not kibana_url and not es_url:
             print(
