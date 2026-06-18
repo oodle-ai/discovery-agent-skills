@@ -89,6 +89,15 @@ ES_ENDPOINTS: list[tuple[str, str]] = [
     ("ilm_policies", "/_ilm/policy"),
     ("snapshot_repos", "/_snapshot/_all"),
     ("nodes_usage", "/_nodes/usage"),
+    (
+        "slowlog_settings",
+        "/_all/_settings?filter_path=*.settings.index.search.slowlog",
+    ),
+    (
+        "monitoring_indices",
+        "/_cat/indices/.monitoring-es-*?format=json&bytes=b"
+        "&h=index,docs.count,store.size",
+    ),
 ]
 
 KIBANA_SAVED_OBJECT_TYPES = [
@@ -514,6 +523,89 @@ def derive_rest_api_usage(results: dict[str, Any]) -> list[dict]:
     ]
 
 
+def derive_search_hotspots(results: dict[str, Any]) -> list[dict]:
+    """Per-index-pattern search counters from /_stats, top 20 by query count."""
+    stats = results.get("cluster_index_stats")
+    if not stats:
+        return []
+    indices = stats.get("indices", {})
+    if not indices:
+        return []
+
+    pattern_agg: dict[str, dict[str, int]] = defaultdict(
+        lambda: {"query_total": 0, "query_time_ms": 0, "fetch_total": 0, "fetch_time_ms": 0}
+    )
+    for idx_name, idx_stats in indices.items():
+        if idx_name.startswith("."):
+            continue
+        search = idx_stats.get("total", {}).get("search", {})
+        if not search.get("query_total"):
+            continue
+        pattern = _index_to_pattern(idx_name)
+        agg = pattern_agg[pattern]
+        agg["query_total"] += search.get("query_total", 0)
+        agg["query_time_ms"] += search.get("query_time_in_millis", 0)
+        agg["fetch_total"] += search.get("fetch_total", 0)
+        agg["fetch_time_ms"] += search.get("fetch_time_in_millis", 0)
+
+    hotspots = []
+    for pattern, agg in sorted(pattern_agg.items(), key=lambda kv: -kv[1]["query_total"])[:20]:
+        qt = agg["query_total"]
+        hotspots.append({
+            "index_pattern": pattern,
+            "query_total": qt,
+            "query_time_ms": agg["query_time_ms"],
+            "avg_latency_ms": round(agg["query_time_ms"] / qt, 2) if qt else None,
+            "fetch_total": agg["fetch_total"],
+        })
+    return hotspots
+
+
+def derive_slowlog_config(results: dict[str, Any]) -> list[dict]:
+    """Extract indices with slow log thresholds configured."""
+    settings = results.get("slowlog_settings")
+    if not settings or not isinstance(settings, dict):
+        return []
+
+    configs: list[dict] = []
+    for idx_name, idx_body in settings.items():
+        slowlog = (
+            idx_body.get("settings", {})
+            .get("index", {})
+            .get("search", {})
+            .get("slowlog", {})
+        )
+        if not slowlog:
+            continue
+        entry: dict[str, Any] = {"index": idx_name}
+        threshold = slowlog.get("threshold", {})
+        for phase in ("query", "fetch"):
+            phase_cfg = threshold.get(phase, {})
+            for level in ("warn", "info", "debug", "trace"):
+                val = phase_cfg.get(level)
+                if val:
+                    entry[f"{phase}_{level}"] = val
+        if len(entry) > 1:
+            configs.append(entry)
+
+    return sorted(configs, key=lambda c: c["index"])
+
+
+def derive_monitoring_indices(results: dict[str, Any]) -> list[dict]:
+    """Detect .monitoring-es-* indices presence and sizes."""
+    indices = results.get("monitoring_indices")
+    if not indices or not isinstance(indices, list):
+        return []
+    return [
+        {
+            "index": idx.get("index", ""),
+            "docs_count": _safe_int(idx.get("docs.count")),
+            "store_size_bytes": _safe_int(idx.get("store.size")),
+        }
+        for idx in indices
+    ]
+
+
 # ── summary builder ─────────────────────────────────────────────────────
 
 
@@ -845,6 +937,21 @@ def build_summary(
                 "total_spans": total_docs,
                 "total_primary_size_gb": round(total_pri / 1e9, 2),
             }
+
+    # search hotspots (per-index-pattern query stats)
+    hotspots = derive_search_hotspots(results)
+    if hotspots:
+        inv["search_hotspots"] = hotspots
+
+    # slow log configuration
+    slowlog = derive_slowlog_config(results)
+    if slowlog:
+        inv["slowlog_config"] = slowlog
+
+    # monitoring indices (.monitoring-es-*)
+    mon_indices = derive_monitoring_indices(results)
+    if mon_indices:
+        inv["monitoring_indices"] = mon_indices
 
 
 # ── main ────────────────────────────────────────────────────────────────

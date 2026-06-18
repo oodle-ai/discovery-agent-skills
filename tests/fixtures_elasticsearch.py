@@ -244,22 +244,54 @@ def index_settings() -> dict:
     return settings
 
 
-CLUSTER_INDEX_STATS = {
-    "_all": {
-        "total": {
-            "search": {
-                "query_total": 150000,
-                "query_time_in_millis": 750000,
-                "fetch_total": 90000,
-                "fetch_time_in_millis": 270000,
-                "scroll_total": 3000,
-                "scroll_time_in_millis": 15000,
-                "suggest_total": 0,
-                "suggest_time_in_millis": 0,
+def _per_index_search_stats() -> dict:
+    """Per-index search stats keyed by index name, for /_stats indices block."""
+    dates = _recent_dates()
+    indices = {}
+    for day_date in dates:
+        for name in (f"logs-app-{day_date}", f"metrics-infra-{day_date}"):
+            indices[name] = {
+                "total": {
+                    "search": {
+                        "query_total": 10000,
+                        "query_time_in_millis": 50000,
+                        "fetch_total": 6000,
+                        "fetch_time_in_millis": 18000,
+                    }
+                }
+            }
+    for day_date in _recent_dates(APM_DAYS_WITH_DATA):
+        indices[f"traces-apm-default-{day_date}"] = {
+            "total": {
+                "search": {
+                    "query_total": 2000,
+                    "query_time_in_millis": 4000,
+                    "fetch_total": 1000,
+                    "fetch_time_in_millis": 2000,
+                }
             }
         }
+    return indices
+
+
+def cluster_index_stats() -> dict:
+    return {
+        "_all": {
+            "total": {
+                "search": {
+                    "query_total": 150000,
+                    "query_time_in_millis": 750000,
+                    "fetch_total": 90000,
+                    "fetch_time_in_millis": 270000,
+                    "scroll_total": 3000,
+                    "scroll_time_in_millis": 15000,
+                    "suggest_total": 0,
+                    "suggest_time_in_millis": 0,
+                }
+            }
+        },
+        "indices": _per_index_search_stats(),
     }
-}
 
 ILM_POLICIES = {
     "logs-policy": {
@@ -360,3 +392,39 @@ KIBANA_DATA_VIEW_DETAIL_2 = {
         "timeFieldName": "@timestamp",
     }
 }
+
+
+def slowlog_settings() -> dict:
+    """Slow log thresholds configured on one index pattern."""
+    dates = _recent_dates()
+    settings = {}
+    for day_date in dates:
+        settings[f"logs-app-{day_date}"] = {
+            "settings": {
+                "index": {
+                    "search": {
+                        "slowlog": {
+                            "threshold": {
+                                "query": {"warn": "10s", "info": "5s"},
+                                "fetch": {"warn": "1s"},
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    return settings
+
+
+MONITORING_INDICES = [
+    {
+        "index": ".monitoring-es-7-2026.06.17",
+        "docs.count": "500000",
+        "store.size": "250000000",
+    },
+    {
+        "index": ".monitoring-es-7-2026.06.16",
+        "docs.count": "480000",
+        "store.size": "240000000",
+    },
+]

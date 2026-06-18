@@ -388,6 +388,55 @@
         "name": "APM Traces",
         "timeFieldName": "@timestamp"
       }
+    ],
+    "search_hotspots": [
+      {
+        "index_pattern": "logs-app-*",
+        "query_total": 85000,
+        "query_time_ms": 340000,
+        "avg_latency_ms": 4.0,
+        "fetch_total": 51000
+      },
+      {
+        "index_pattern": "metrics-infra-*",
+        "query_total": 42000,
+        "query_time_ms": 210000,
+        "avg_latency_ms": 5.0,
+        "fetch_total": 25200
+      },
+      {
+        "index_pattern": "traces-apm-default-*",
+        "query_total": 10000,
+        "query_time_ms": 20000,
+        "avg_latency_ms": 2.0,
+        "fetch_total": 5000
+      }
+    ],
+    "slowlog_config": [
+      {
+        "index": "logs-app-2026.06.12",
+        "query_warn": "10s",
+        "query_info": "5s",
+        "fetch_warn": "1s"
+      },
+      {
+        "index": "logs-app-2026.06.13",
+        "query_warn": "10s",
+        "query_info": "5s",
+        "fetch_warn": "1s"
+      }
+    ],
+    "monitoring_indices": [
+      {
+        "index": ".monitoring-es-7-2026.06.17",
+        "docs_count": 500000,
+        "store_size_bytes": 250000000
+      },
+      {
+        "index": ".monitoring-es-7-2026.06.16",
+        "docs_count": 480000,
+        "store_size_bytes": 240000000
+      }
     ]
   },
   "gaps": []

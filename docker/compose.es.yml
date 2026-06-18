@@ -27,6 +27,10 @@ services:
         set -e
         ES=http://elasticsearch:9200
 
+        # Remove built-in index templates that conflict with our test indices
+        curl -sf -X DELETE "$$ES/_index_template/logs" || true
+        curl -sf -X DELETE "$$ES/_index_template/metrics" || true
+
         # Create ILM policy
         curl -sf -X PUT "$$ES/_ilm/policy/logs-policy" -H 'Content-Type: application/json' -d '{
           "policy": {
@@ -40,7 +44,7 @@ services:
         # Create date-based indices with known doc counts (last 7 days)
         for i in 0 1 2 3 4 5 6; do
           DATE=$$(date -u -d "-$${i} days" +%Y.%m.%d)
-          INDEX="logs-app-$$DATE"
+          INDEX="applogs-$$DATE"
           echo "Creating index $$INDEX"
 
           curl -sf -X PUT "$$ES/$$INDEX" -H 'Content-Type: application/json' -d '{
@@ -60,6 +64,14 @@ services:
           "settings": {"number_of_shards": 1, "number_of_replicas": 0}
         }'
         curl -sf -X POST "$$ES/config-store/_doc" -H 'Content-Type: application/json' -d '{"key": "test", "value": "data"}'
+
+        # Configure slow log thresholds on applogs indices
+        echo "Configuring slow log settings..."
+        curl -sf -X PUT "$$ES/applogs-*/_settings" -H 'Content-Type: application/json' -d '{
+          "index.search.slowlog.threshold.query.warn": "10s",
+          "index.search.slowlog.threshold.query.info": "5s",
+          "index.search.slowlog.threshold.fetch.warn": "1s"
+        }'
 
         # Force refresh
         curl -sf -X POST "$$ES/_refresh"

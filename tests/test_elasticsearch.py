@@ -9,6 +9,19 @@ import pytest
 ES_BASE = "https://es:9200"
 
 
+def _merged_settings():
+    """Merge creation_date and slowlog settings into one response."""
+    base = fx.index_settings()
+    for idx_name, body in fx.slowlog_settings().items():
+        if idx_name in base:
+            base[idx_name]["settings"]["index"]["search"] = (
+                body["settings"]["index"]["search"]
+            )
+        else:
+            base[idx_name] = body
+    return base
+
+
 def mock_es_direct(respx_mock):
     """Wire up respx routes for a direct ES connection."""
     respx_mock.get(f"{ES_BASE}/_cluster/health").respond(json=fx.CLUSTER_HEALTH)
@@ -18,14 +31,17 @@ def mock_es_direct(respx_mock):
     )
     respx_mock.get(f"{ES_BASE}/_nodes/os,jvm").respond(json=fx.NODES_INFO)
     respx_mock.get(f"{ES_BASE}/_cat/indices").respond(json=fx.cat_indices())
-    respx_mock.get(f"{ES_BASE}/_all/_settings").respond(json=fx.index_settings())
-    respx_mock.get(f"{ES_BASE}/_stats").respond(json=fx.CLUSTER_INDEX_STATS)
+    respx_mock.get(f"{ES_BASE}/_all/_settings").respond(json=_merged_settings())
+    respx_mock.get(f"{ES_BASE}/_stats").respond(json=fx.cluster_index_stats())
     respx_mock.get(f"{ES_BASE}/_ilm/policy").respond(json=fx.ILM_POLICIES)
     respx_mock.get(f"{ES_BASE}/_snapshot/_all").respond(json=fx.SNAPSHOT_REPOS)
     respx_mock.get(f"{ES_BASE}/_snapshot/s3-backups/_all").respond(
         json=fx.SNAPSHOT_DETAILS[0]["snapshots"]
     )
     respx_mock.get(f"{ES_BASE}/_nodes/usage").respond(json=fx.NODES_USAGE)
+    respx_mock.get(f"{ES_BASE}/_cat/indices/.monitoring-es-*").respond(
+        json=fx.MONITORING_INDICES
+    )
 
 
 def run_collector(es_collect, tmp_path, monkeypatch, extra_args=None):
@@ -127,6 +143,28 @@ class TestElasticsearchCollector:
         assert inv["snapshot_repositories"] == ["s3-backups"]
         assert inv["apm_traces"]["index_count"] == fx.NUM_APM_INDICES
         assert inv["apm_traces"]["total_spans"] == fx.APM_TOTAL_DOCS
+
+        # search hotspots (per-index-pattern query stats from /_stats)
+        hotspots = inv["search_hotspots"]
+        assert len(hotspots) > 0
+        patterns = {h["index_pattern"] for h in hotspots}
+        assert "logs-app-*" in patterns
+        assert "metrics-infra-*" in patterns
+        assert all(h["query_total"] > 0 for h in hotspots)
+        assert all(h["avg_latency_ms"] is not None for h in hotspots)
+
+        # slow log configuration
+        slowlog = inv["slowlog_config"]
+        assert len(slowlog) == fx.DAYS_WITH_DATA
+        assert all(c["query_warn"] == "10s" for c in slowlog)
+        assert all(c["fetch_warn"] == "1s" for c in slowlog)
+
+        # monitoring indices (.monitoring-es-*)
+        mon = inv["monitoring_indices"]
+        assert len(mon) == 2
+        assert mon[0]["index"].startswith(".monitoring-es-")
+        assert mon[0]["docs_count"] == 500000
+        assert mon[0]["store_size_bytes"] == 250000000
 
     def test_index_patterns_grouped(self, es_collect, tmp_path, monkeypatch, respx_mock):
         mock_es_direct(respx_mock)
@@ -234,6 +272,8 @@ class TestElasticsearchCollector:
             "ilm_policies.json",
             "snapshot_repos.json",
             "nodes_usage.json",
+            "slowlog_settings.json",
+            "monitoring_indices.json",
         ]
         for name in expected_files:
             assert (evidence_dir / name).exists(), f"missing {name}"
