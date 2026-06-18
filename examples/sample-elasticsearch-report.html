@@ -136,7 +136,7 @@
 <body>
 <div class="header">
   <h1>Infrastructure &amp; Observability Discovery Report</h1>
-  <p>Generated on 2026-01-01</p>
+  <p>Generated on 2026-06-18</p>
 </div>
 <div class="container">
 <div class="summary-grid"><div class="summary-card"><div class="value">—</div><div class="label">Environments</div></div>
@@ -252,6 +252,22 @@
 <tr><td>dv-1</td><td>logs-*</td><td>Logs</td><td>@timestamp</td></tr>
 <tr><td>dv-2</td><td>metrics-*</td><td>Metrics</td><td>@timestamp</td></tr>
 <tr><td>dv-3</td><td>traces-apm-*</td><td>APM Traces</td><td>@timestamp</td></tr>
+</tbody></table></div>
+<h3>Search hotspots</h3>
+<div class="table-wrap"><table><thead><tr><th>index pattern</th><th>query total</th><th>query time ms</th><th>avg latency ms</th><th>fetch total</th></tr></thead><tbody>
+<tr><td>logs-app-*</td><td>85000</td><td>340000</td><td>4.0</td><td>51000</td></tr>
+<tr><td>metrics-infra-*</td><td>42000</td><td>210000</td><td>5.0</td><td>25200</td></tr>
+<tr><td>traces-apm-default-*</td><td>10000</td><td>20000</td><td>2.0</td><td>5000</td></tr>
+</tbody></table></div>
+<h3>Slowlog config</h3>
+<div class="table-wrap"><table><thead><tr><th>index</th><th>query warn</th><th>query info</th><th>fetch warn</th></tr></thead><tbody>
+<tr><td>logs-app-2026.06.12</td><td>10s</td><td>5s</td><td>1s</td></tr>
+<tr><td>logs-app-2026.06.13</td><td>10s</td><td>5s</td><td>1s</td></tr>
+</tbody></table></div>
+<h3>Monitoring indices</h3>
+<div class="table-wrap"><table><thead><tr><th>index</th><th>docs count</th><th>store size</th></tr></thead><tbody>
+<tr><td>.monitoring-es-7-2026.06.17</td><td>500000</td><td>250.0 MB</td></tr>
+<tr><td>.monitoring-es-7-2026.06.16</td><td>480000</td><td>240.0 MB</td></tr>
 </tbody></table></div></div></details>
 <div class="section"><h2>Provenance Appendix</h2>
 <p class="muted">Every measured figure below can be re-derived from the raw API response captured in the listed evidence file (under each collector's output directory).</p><div class="table-wrap"><table class="provenance"><thead><tr><th>Figure</th><th>Collector</th><th>Source API</th><th>Query</th><th>Evidence</th></tr></thead><tbody>
