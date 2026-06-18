@@ -10,7 +10,7 @@ ES_BASE = "https://es:9200"
 
 
 def _merged_settings():
-    """Merge index creation_date and slowlog settings (ES returns both, filter_path is server-side)."""
+    """Merge creation_date and slowlog settings into one response."""
     base = fx.index_settings()
     for idx_name, body in fx.slowlog_settings().items():
         if idx_name in base:
