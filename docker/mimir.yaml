@@ -1,0 +1,67 @@
+multitenancy_enabled: false
+
+server:
+  http_listen_port: 8080
+  log_level: warn
+
+common:
+  storage:
+    backend: s3
+    s3:
+      endpoint: minio:9000
+      access_key_id: mimir
+      secret_access_key: mimirpass
+      insecure: true
+      bucket_name: mimir-blocks
+
+blocks_storage:
+  storage_prefix: blocks
+  tsdb:
+    dir: /data/tsdb
+    retention_period: 2h
+
+compactor:
+  data_dir: /data/compactor
+
+ingester:
+  ring:
+    replication_factor: 1
+    instance_addr: 127.0.0.1
+    kvstore:
+      store: memberlist
+
+distributor:
+  ring:
+    instance_addr: 127.0.0.1
+    kvstore:
+      store: memberlist
+
+store_gateway:
+  sharding_ring:
+    instance_addr: 127.0.0.1
+    kvstore:
+      store: memberlist
+
+ruler_storage:
+  backend: s3
+  s3:
+    endpoint: minio:9000
+    access_key_id: mimir
+    secret_access_key: mimirpass
+    insecure: true
+    bucket_name: mimir-ruler
+
+alertmanager_storage:
+  backend: s3
+  s3:
+    endpoint: minio:9000
+    access_key_id: mimir
+    secret_access_key: mimirpass
+    insecure: true
+    bucket_name: mimir-alertmanager
+
+limits:
+  max_global_series_per_user: 0
+  ingestion_rate: 100000
+  ingestion_burst_size: 500000
+  compactor_blocks_retention_period: 30d

@@ -52,6 +52,13 @@ def os_collect():
 
 
 @pytest.fixture(scope="session")
+def mimir_collect():
+    return load_module(
+        "mimir_collect", REPO_ROOT / "collectors" / "mimir" / "collect.py"
+    )
+
+
+@pytest.fixture(scope="session")
 def report_gen():
     return load_module("generate_report", REPO_ROOT / "report" / "generate_report.py")
 
