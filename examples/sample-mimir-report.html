@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Infrastructure &amp; Observability Discovery Report</title>
+<style>
+  :root {
+    --primary: #1a1a2e;
+    --accent: #4f46e5;
+    --bg: #f8fafc;
+    --card: #ffffff;
+    --text: #1e293b;
+    --text-muted: #64748b;
+    --border: #e2e8f0;
+    --success: #10b981;
+    --warning: #f59e0b;
+    --danger: #ef4444;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+  }
+  .header { background: var(--primary); color: white; padding: 3rem 2rem; text-align: center; }
+  .header h1 { font-size: 2rem; margin-bottom: 0.5rem; }
+  .header p { color: #94a3b8; font-size: 1.1rem; }
+  .container { max-width: 1100px; margin: 0 auto; padding: 2rem; }
+  .summary-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 1rem;
+    margin: 2rem 0;
+  }
+  .summary-card {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 12px; padding: 1.25rem; text-align: center;
+  }
+  .summary-card .value { font-size: 1.75rem; font-weight: 700; color: var(--accent); }
+  .summary-card .label { color: var(--text-muted); font-size: 0.8rem; margin-top: 0.25rem; }
+  .section {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 12px; padding: 1.75rem; margin: 1.25rem 0;
+  }
+  .section h2 {
+    font-size: 1.3rem; margin-bottom: 0.75rem; color: var(--primary);
+    border-bottom: 2px solid var(--accent); padding-bottom: 0.5rem;
+  }
+  .section h3 { font-size: 1.05rem; margin: 1rem 0 0.5rem; color: var(--primary); }
+  table { width: 100%; border-collapse: collapse; margin: 0.75rem 0; font-size: 0.9rem; }
+  th, td { padding: 0.6rem 0.75rem; text-align: left; border-bottom: 1px solid var(--border); }
+  th {
+    background: var(--bg); font-weight: 600; color: var(--text-muted);
+    text-transform: uppercase; font-size: 0.75rem; letter-spacing: 0.05em;
+  }
+  .tag {
+    display: inline-block; padding: 0.2rem 0.6rem; border-radius: 9999px;
+    font-size: 0.75rem; font-weight: 500; margin: 0.125rem;
+  }
+  .tag-blue { background: #dbeafe; color: #1d4ed8; }
+  .tag-green { background: #d1fae5; color: #065f46; }
+  .tag-purple { background: #ede9fe; color: #5b21b6; }
+  .tag-orange { background: #ffedd5; color: #9a3412; }
+  .tag-red { background: #fee2e2; color: #991b1b; }
+  .tag-gray { background: #f1f5f9; color: #475569; }
+  .pain-point {
+    border-left: 4px solid var(--warning); padding: 0.75rem 1.25rem;
+    margin: 0.5rem 0; background: #fffbeb; border-radius: 0 8px 8px 0;
+  }
+  .recommendation {
+    border-left: 4px solid var(--success); padding: 0.75rem 1.25rem;
+    margin: 0.5rem 0; background: #ecfdf5; border-radius: 0 8px 8px 0;
+  }
+  .env-badge {
+    display: inline-block; padding: 0.2rem 0.6rem; border-radius: 4px;
+    font-size: 0.75rem; font-weight: 600; text-transform: uppercase;
+  }
+  .env-prod { background: #fee2e2; color: #991b1b; }
+  .env-staging { background: #fef3c7; color: #92400e; }
+  .env-dev { background: #d1fae5; color: #065f46; }
+  .env-other { background: #f1f5f9; color: #475569; }
+  .footer { text-align: center; padding: 2rem; color: var(--text-muted); font-size: 0.85rem; }
+  ul { padding-left: 1.5rem; margin: 0.5rem 0; }
+  li { margin: 0.25rem 0; }
+
+  /* status + provenance */
+  .status-badge {
+    display: inline-block; padding: 0.1rem 0.5rem; border-radius: 4px;
+    font-size: 0.7rem; font-weight: 600; text-transform: uppercase;
+  }
+  .status-ok { background: #d1fae5; color: #065f46; }
+  .status-estimated { background: #fef3c7; color: #92400e; }
+  .status-partial { background: #ffedd5; color: #9a3412; }
+  .status-unavailable { background: #fee2e2; color: #991b1b; }
+  .status-reported { background: #f1f5f9; color: #475569; }
+  .narrative {
+    border-left: 4px solid var(--accent); padding: 0.75rem 1.25rem;
+    margin: 0.5rem 0; background: #eef2ff; border-radius: 0 8px 8px 0;
+    font-size: 0.95rem;
+  }
+  details.deep-dive {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 12px; margin: 1rem 0; padding: 0;
+  }
+  details.deep-dive > summary {
+    cursor: pointer; padding: 1rem 1.5rem; font-weight: 600;
+    color: var(--primary); font-size: 1.05rem; list-style-position: inside;
+  }
+  details.deep-dive > .deep-dive-body { padding: 0 1.75rem 1.5rem; }
+  .provenance { font-size: 0.8rem; }
+  .provenance td { font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+                   font-size: 0.75rem; vertical-align: top; }
+  .provenance td:nth-child(1), .provenance td:nth-child(2) { white-space: nowrap; }
+  .table-wrap { overflow-x: auto; }
+  .muted { color: var(--text-muted); font-size: 0.85rem; }
+  code { background: #f1f5f9; padding: 0.1rem 0.3rem; border-radius: 4px;
+         font-size: 0.85em; overflow-wrap: anywhere; }
+
+  /* pure-CSS tooltips (title attributes are unreliable/invisible) */
+  [data-tip] { position: relative; cursor: help; }
+  [data-tip]:hover::after {
+    content: attr(data-tip);
+    position: absolute; left: 50%; transform: translateX(-50%);
+    bottom: calc(100% + 6px);
+    background: var(--primary); color: #f1f5f9;
+    padding: 0.45rem 0.65rem; border-radius: 6px;
+    font-size: 0.75rem; font-weight: 400; line-height: 1.4;
+    white-space: pre-line; width: max-content; max-width: 340px;
+    text-align: left; z-index: 10; pointer-events: none;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.25);
+  }
+</style>
+</head>
+<body>
+<div class="header">
+  <h1>Infrastructure &amp; Observability Discovery Report</h1>
+  <p>Generated on 2026-06-18 for Acme Corp (fictional sample)</p>
+</div>
+<div class="container">
+<div class="summary-grid"><div class="summary-card" data-tip="reported by agent/user — not collector-verified"><div class="value">2</div><div class="label">Environments</div></div>
+<div class="summary-card" data-tip="reported by agent/user — not collector-verified"><div class="value">59</div><div class="label">Services</div></div>
+<div class="summary-card" data-tip="reported by agent/user — not collector-verified"><div class="value">30</div><div class="label">Compute Nodes</div></div>
+<div class="summary-card" data-tip="mimir: 125.0K samples/sec (ok)"><div class="value">125.0K samples/sec</div><div class="label">Metrics Ingestion</div></div>
+<div class="summary-card" data-tip="no measured figure; see Coverage &amp; Gaps"><div class="value">—</div><div class="label">Log Volume</div></div>
+<div class="summary-card" data-tip="no measured figure; see Coverage &amp; Gaps"><div class="value">—</div><div class="label">Trace Volume</div></div>
+<div class="summary-card" data-tip="mimir: ~$114.09 (estimated)"><div class="value">~$114.09</div><div class="label">Est. Observability Spend</div></div>
+<div class="summary-card" data-tip="reported by agent/user — not collector-verified"><div class="value">8 engineers</div><div class="label">Team Size</div></div></div>
+<div class="narrative">Two AWS EKS environments, all-in on Datadog for metrics/logs/alerting.</div>
+<div class="section"><h2>Environments</h2>
+<div class="table-wrap"><table><thead><tr><th>Environment</th><th>Cloud</th><th>Region</th><th>Cluster</th><th>Nodes</th><th>Services</th></tr></thead><tbody>
+<tr><td><strong>production</strong> <span class="env-badge env-prod">prod</span></td><td>aws</td><td>us-east-1</td><td>prod-eks</td><td>24</td><td>31</td></tr>
+<tr><td><strong>staging</strong> <span class="env-badge env-staging">staging</span></td><td>aws</td><td>us-east-1</td><td>stg-eks</td><td>6</td><td>28</td></tr>
+</tbody></table></div><p class="muted">Reported by discovery agent from kubectl/cloud CLI inventory.</p>
+</div>
+<div class="section"><h2>Tech Stack</h2>
+<p><strong>Languages:</strong> <span class="tag tag-blue">Go</span> <span class="tag tag-blue">Python</span></p>
+<p><strong>Databases:</strong> <span class="tag tag-green">PostgreSQL</span> <span class="tag tag-green">Redis</span></p>
+<p><strong>Infra / IaC:</strong> <span class="tag tag-purple">Terraform</span> <span class="tag tag-purple">Helm</span></p>
+<p><strong>Messaging:</strong> <span class="tag tag-orange">Kafka</span></p>
+</div>
+<div class="section"><h2>Observability Stack &amp; Scale</h2>
+<div class="table-wrap"><table><thead><tr><th>Signal</th><th>Tools</th><th>Measured Scale (source shown; hover for detail)</th></tr></thead><tbody>
+<tr><td>Metrics</td><td><span class="tag tag-blue">Datadog</span></td><td><span data-tip="mimir: 125.0K samples/sec (ok)">125.0K samples/sec <span class="muted">· mimir</span></span> <span class="status-badge status-ok">ok</span><br><span data-tip="mimir: 4.82M series (ok)">4.82M active series <span class="muted">· mimir</span></span> <span class="status-badge status-ok">ok</span></td></tr>
+<tr><td>Logs</td><td><span class="tag tag-blue">Datadog Logs</span></td><td><span class="muted">no measured figure</span></td></tr>
+<tr><td>Alerting</td><td><span class="tag tag-blue">Datadog Monitors</span> <span class="tag tag-blue">PagerDuty</span></td><td><span class="muted">no measured figure</span></td></tr>
+</tbody></table></div>
+</div>
+<div class="section"><h2>Observability Spend (Estimated Monthly)</h2>
+<div class="table-wrap"><table><thead><tr><th>Source</th><th>Monthly Spend</th><th>Status</th><th>Method</th></tr></thead><tbody>
+<tr><td>mimir</td><td>~$114.09/mo</td><td><span class="status-badge status-estimated">estimated</span></td><td>storage estimated from ingestion rate x 1.5 bytes/sample x retention; does not include compute or disk costs (no kubectl data)</td></tr>
+<tr><td><span class="muted">└ Object store API ops</span></td><td><span class="muted">~$103.68/mo</span></td><td></td><td><span class="muted"></span></td></tr>
+<tr><td><span class="muted">└ Object storage</span></td><td><span class="muted">~$10.41/mo</span></td><td></td><td><span class="muted"></span></td></tr>
+<tr><td>Datadog contract</td><td>$480K/yr committed</td><td><span class="status-badge status-reported">reported</span></td><td>stated by user; not verified</td></tr>
+</tbody></table></div><p><strong>Measured total: ~$114.09/mo</strong> <span class="muted">(observability spend only; user-reported rows not included)</span></p>
+</div>
+<div class="section"><h2>Observability Pain Points</h2>
+<div class="pain-point"><strong>Alert fatigue</strong><br>300+ monitors, many flapping nightly.</div>
+<div class="recommendation">Audit monitor thresholds; consolidate composites.</div>
+</div>
+<div class="section" id="coverage"><h2>Coverage &amp; Gaps</h2>
+<div class="table-wrap"><table><thead><tr><th>Collector</th><th>Figures collected</th><th>Target</th><th>Lookback</th></tr></thead><tbody>
+<tr><td>mimir</td><td>8/8</td><td>https://mimir-gateway.internal:8080</td><td>7d</td></tr>
+</tbody></table></div>
+<h3>Gaps</h3>
+<div class="table-wrap"><table><thead><tr><th>Collector</th><th>Area</th><th>Figures</th><th>Reason</th><th>Detail</th><th>Remediation</th></tr></thead><tbody>
+<tr><td>cloudwatch</td><td>all</td><td>—</td><td><span class="tag tag-red">not_run</span></td><td>aws CLI not configured on this machine</td><td>—</td></tr>
+</tbody></table></div>
+</div>
+<h2 style='margin:2rem 0 0.5rem'>Deep Dives</h2>
+<details class="deep-dive"><summary>mimir — collected details</summary><div class="deep-dive-body"><p class="muted">Detected: detected_backend=mimir, version=2.14.0, tenancy=multi</p>
+<div class="table-wrap"><table><thead><tr><th>Figure</th><th>Value</th><th>Status</th><th>Method / Reason</th><th>Window</th></tr></thead><tbody>
+<tr><td>Active time series</td><td>4.82M series</td><td><span class="status-badge status-ok">ok</span></td><td>sum(cortex_ingester_active_series) instant query</td><td>—</td></tr>
+<tr><td>Ingestion rate (avg)</td><td>125.0K samples/sec</td><td><span class="status-badge status-ok">ok</span></td><td>avg of range query over 7d lookback</td><td>2026-06-11T04:00:00Z → 2026-06-18T04:00:00Z</td></tr>
+<tr><td>Ingestion rate (peak)</td><td>180.0K samples/sec</td><td><span class="status-badge status-ok">ok</span></td><td>max of range query over 7d lookback</td><td>2026-06-11T04:00:00Z → 2026-06-18T04:00:00Z</td></tr>
+<tr><td>Query rate (avg)</td><td>42.50 req/sec</td><td><span class="status-badge status-ok">ok</span></td><td>avg of range query over 7d lookback</td><td>2026-06-11T04:00:00Z → 2026-06-18T04:00:00Z</td></tr>
+<tr><td>Query rate (peak)</td><td>85 req/sec</td><td><span class="status-badge status-ok">ok</span></td><td>max of range query over 7d lookback</td><td>2026-06-11T04:00:00Z → 2026-06-18T04:00:00Z</td></tr>
+<tr><td>Object store operations</td><td>8.64M ops/day</td><td><span class="status-badge status-ok">ok</span></td><td>sum of per-operation rates x 86400</td><td>2026-06-11T04:00:00Z → 2026-06-18T04:00:00Z</td></tr>
+<tr><td>Retention period</td><td>30 days</td><td><span class="status-badge status-ok">ok</span></td><td>parsed compactor_blocks_retention_period from /config</td><td>—</td></tr>
+<tr><td>Estimated infra cost (storage + API)</td><td>~$114.09</td><td><span class="status-badge status-estimated">estimated</span></td><td>storage estimated from ingestion rate x 1.5 bytes/sample x retention; does not include compute or disk costs (no kubectl data)</td><td>—</td></tr>
+</tbody></table></div>
+<div class="table-wrap"><table><thead><tr><th>Fact</th><th>Value</th></tr></thead><tbody>
+<tr><td>Replication factor</td><td>3</td></tr>
+<tr><td>Estimated storage gb</td><td>452.62</td></tr>
+</tbody></table></div>
+<h3>Tenant breakdown</h3>
+<div class="table-wrap"><table><thead><tr><th>tenant</th><th>active series</th><th>pct of total</th><th>samples per sec</th></tr></thead><tbody>
+<tr><td>platform-team</td><td>2400000</td><td>49.7</td><td>62500.0</td></tr>
+<tr><td>app-team</td><td>1500000</td><td>31.1</td><td>40000.0</td></tr>
+<tr><td>infra-team</td><td>923511</td><td>19.1</td><td>22500.0</td></tr>
+</tbody></table></div>
+<h3>Cost breakdown</h3>
+<div class="table-wrap"><table><thead><tr><th>product</th><th>monthly usd</th></tr></thead><tbody>
+<tr><td>Object store API ops</td><td>103.68</td></tr>
+<tr><td>Object storage</td><td>10.41</td></tr>
+</tbody></table></div></div></details>
+<div class="section"><h2>Provenance Appendix</h2>
+<p class="muted">Every measured figure below can be re-derived from the raw API response captured in the listed evidence file (under each collector's output directory).</p><div class="table-wrap"><table class="provenance"><thead><tr><th>Figure</th><th>Collector</th><th>Source API</th><th>Query</th><th>Evidence</th></tr></thead><tbody>
+<tr><td><code>metrics.active_series</code></td><td>mimir</td><td>GET /api/v1/query</td><td>sum(cortex_ingester_active_series)</td><td><code>evidence/prom_instant_active_series_sum.json</code></td></tr>
+<tr><td><code>metrics.samples_per_sec</code></td><td>mimir</td><td>GET /api/v1/query_range</td><td>sum(rate(cortex_distributor_received_samples_total[5m])) or sum(rate(cortex_ingest_storage_reader_fetch_records_total[5m]))</td><td><code>evidence/prom_range_ingestion_rate.json</code></td></tr>
+<tr><td><code>mimir.ingestion_rate_peak</code></td><td>mimir</td><td>GET /api/v1/query_range</td><td>sum(rate(cortex_distributor_received_samples_total[5m])) or sum(rate(cortex_ingest_storage_reader_fetch_records_total[5m]))</td><td><code>evidence/prom_range_ingestion_rate.json</code></td></tr>
+<tr><td><code>mimir.query_rate_avg</code></td><td>mimir</td><td>GET /api/v1/query_range</td><td>sum(rate(cortex_request_duration_seconds_count{route=~&quot;.*query.*&quot;}[5m]))</td><td><code>evidence/prom_range_query_requests.json</code></td></tr>
+<tr><td><code>mimir.query_rate_peak</code></td><td>mimir</td><td>GET /api/v1/query_range</td><td>sum(rate(cortex_request_duration_seconds_count{route=~&quot;.*query.*&quot;}[5m]))</td><td><code>evidence/prom_range_query_requests.json</code></td></tr>
+<tr><td><code>mimir.objstore_ops_per_day</code></td><td>mimir</td><td>GET /api/v1/query_range</td><td>sum(rate(thanos_objstore_bucket_operations_total[5m])) by (operation)</td><td><code>evidence/prom_range_objstore_ops_by_op.json</code></td></tr>
+<tr><td><code>mimir.retention_days</code></td><td>mimir</td><td>GET /config</td><td>—</td><td><code>evidence/config.json</code></td></tr>
+<tr><td><code>cost.monthly_usd</code></td><td>mimir</td><td>derived from /api/v1/query_range + /config</td><td>—</td><td><code>evidence/prom_range_objstore_ops_by_op.json</code><br><code>evidence/config.json</code></td></tr>
+</tbody></table></div>
+</div>
+</div>
+<div class="footer">
+  Generated by the Oodle discovery skill. Every measured figure links to raw API evidence
+  (see Provenance). Items marked "reported" were stated by the user and are not verified.
+</div>
+</body>
+</html>

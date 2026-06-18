@@ -100,6 +100,7 @@ class HttpClient:
         path: str,
         params: dict[str, str] | None = None,
         json_body: Any = None,
+        as_text: bool = False,
     ) -> FetchResult:
         """Shared request logic for GET/POST. Never raises for HTTP/connection errors."""
         if self._dead:
@@ -137,6 +138,8 @@ class HttpClient:
                     error=r.text[:300],
                     gap_reason=gap_reason_for_status(r.status_code),
                 )
+            if as_text:
+                return FetchResult(ok=True, data=r.text, status_code=r.status_code)
             try:
                 return FetchResult(ok=True, data=r.json(), status_code=r.status_code)
             except ValueError as exc:
@@ -148,6 +151,10 @@ class HttpClient:
                 )
         # unreachable in practice; keep type-checkers happy
         return FetchResult(ok=False, error=str(last_exc), gap_reason="api_error")
+
+    def get_text(self, path: str, params: dict[str, str] | None = None) -> FetchResult:
+        """GET path, return body as plain text in data. Never raises."""
+        return self._request("GET", path, params=params, as_text=True)
 
     def get_json(self, path: str, params: dict[str, str] | None = None) -> FetchResult:
         """GET path, expect JSON. Never raises for HTTP/connection errors."""

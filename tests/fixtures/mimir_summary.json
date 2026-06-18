@@ -1,0 +1,211 @@
+{
+  "schema_version": "1.0",
+  "collector": "mimir",
+  "collector_version": "1.0.0",
+  "run": {
+    "started_at": "2026-06-18T04:00:00Z",
+    "finished_at": "2026-06-18T04:02:15Z",
+    "target": "https://mimir-gateway.internal:8080",
+    "lookback": "7d",
+    "args_redacted": {
+      "endpoint": "https://mimir-gateway.internal:8080",
+      "lookback": "7d",
+      "tenant": "***"
+    }
+  },
+  "environment": {
+    "detected_backend": "mimir",
+    "version": "2.14.0",
+    "detection_method": "/api/v1/status/buildinfo",
+    "tenancy": "multi"
+  },
+  "figures": [
+    {
+      "id": "metrics.active_series",
+      "label": "Active time series",
+      "value": 4823511,
+      "unit": "series",
+      "status": "ok",
+      "method": "sum(cortex_ingester_active_series) instant query",
+      "source_api": "GET /api/v1/query",
+      "query": "sum(cortex_ingester_active_series)",
+      "time_window": null,
+      "evidence_files": [
+        "evidence/prom_instant_active_series_sum.json"
+      ],
+      "notes": null,
+      "unavailable_reason": null,
+      "remediation": null
+    },
+    {
+      "id": "metrics.samples_per_sec",
+      "label": "Ingestion rate (avg)",
+      "value": 125000.0,
+      "unit": "samples/sec",
+      "status": "ok",
+      "method": "avg of range query over 7d lookback",
+      "source_api": "GET /api/v1/query_range",
+      "query": "sum(rate(cortex_distributor_received_samples_total[5m])) or sum(rate(cortex_ingest_storage_reader_fetch_records_total[5m]))",
+      "time_window": {
+        "start": "2026-06-11T04:00:00Z",
+        "end": "2026-06-18T04:00:00Z"
+      },
+      "evidence_files": [
+        "evidence/prom_range_ingestion_rate.json"
+      ],
+      "notes": null,
+      "unavailable_reason": null,
+      "remediation": null
+    },
+    {
+      "id": "mimir.ingestion_rate_peak",
+      "label": "Ingestion rate (peak)",
+      "value": 180000.0,
+      "unit": "samples/sec",
+      "status": "ok",
+      "method": "max of range query over 7d lookback",
+      "source_api": "GET /api/v1/query_range",
+      "query": "sum(rate(cortex_distributor_received_samples_total[5m])) or sum(rate(cortex_ingest_storage_reader_fetch_records_total[5m]))",
+      "time_window": {
+        "start": "2026-06-11T04:00:00Z",
+        "end": "2026-06-18T04:00:00Z"
+      },
+      "evidence_files": [
+        "evidence/prom_range_ingestion_rate.json"
+      ],
+      "notes": null,
+      "unavailable_reason": null,
+      "remediation": null
+    },
+    {
+      "id": "mimir.query_rate_avg",
+      "label": "Query rate (avg)",
+      "value": 42.5,
+      "unit": "req/sec",
+      "status": "ok",
+      "method": "avg of range query over 7d lookback",
+      "source_api": "GET /api/v1/query_range",
+      "query": "sum(rate(cortex_request_duration_seconds_count{route=~\".*query.*\"}[5m]))",
+      "time_window": {
+        "start": "2026-06-11T04:00:00Z",
+        "end": "2026-06-18T04:00:00Z"
+      },
+      "evidence_files": [
+        "evidence/prom_range_query_requests.json"
+      ],
+      "notes": null,
+      "unavailable_reason": null,
+      "remediation": null
+    },
+    {
+      "id": "mimir.query_rate_peak",
+      "label": "Query rate (peak)",
+      "value": 85.0,
+      "unit": "req/sec",
+      "status": "ok",
+      "method": "max of range query over 7d lookback",
+      "source_api": "GET /api/v1/query_range",
+      "query": "sum(rate(cortex_request_duration_seconds_count{route=~\".*query.*\"}[5m]))",
+      "time_window": {
+        "start": "2026-06-11T04:00:00Z",
+        "end": "2026-06-18T04:00:00Z"
+      },
+      "evidence_files": [
+        "evidence/prom_range_query_requests.json"
+      ],
+      "notes": null,
+      "unavailable_reason": null,
+      "remediation": null
+    },
+    {
+      "id": "mimir.objstore_ops_per_day",
+      "label": "Object store operations",
+      "value": 8640000.0,
+      "unit": "ops/day",
+      "status": "ok",
+      "method": "sum of per-operation rates x 86400",
+      "source_api": "GET /api/v1/query_range",
+      "query": "sum(rate(thanos_objstore_bucket_operations_total[5m])) by (operation)",
+      "time_window": {
+        "start": "2026-06-11T04:00:00Z",
+        "end": "2026-06-18T04:00:00Z"
+      },
+      "evidence_files": [
+        "evidence/prom_range_objstore_ops_by_op.json"
+      ],
+      "notes": null,
+      "unavailable_reason": null,
+      "remediation": null
+    },
+    {
+      "id": "mimir.retention_days",
+      "label": "Retention period",
+      "value": 30.0,
+      "unit": "days",
+      "status": "ok",
+      "method": "parsed compactor_blocks_retention_period from /config",
+      "source_api": "GET /config",
+      "query": null,
+      "time_window": null,
+      "evidence_files": [
+        "evidence/config.json"
+      ],
+      "notes": null,
+      "unavailable_reason": null,
+      "remediation": null
+    },
+    {
+      "id": "cost.monthly_usd",
+      "label": "Estimated infra cost (storage + API)",
+      "value": 114.09,
+      "unit": "USD",
+      "status": "estimated",
+      "method": "storage estimated from ingestion rate x 1.5 bytes/sample x retention; does not include compute or disk costs (no kubectl data)",
+      "source_api": "derived from /api/v1/query_range + /config",
+      "query": null,
+      "time_window": null,
+      "evidence_files": [
+        "evidence/prom_range_objstore_ops_by_op.json",
+        "evidence/config.json"
+      ],
+      "notes": null,
+      "unavailable_reason": null,
+      "remediation": null
+    }
+  ],
+  "inventory": {
+    "tenant_breakdown": [
+      {
+        "tenant": "platform-team",
+        "active_series": 2400000,
+        "pct_of_total": 49.7,
+        "samples_per_sec": 62500.0
+      },
+      {
+        "tenant": "app-team",
+        "active_series": 1500000,
+        "pct_of_total": 31.1,
+        "samples_per_sec": 40000.0
+      },
+      {
+        "tenant": "infra-team",
+        "active_series": 923511,
+        "pct_of_total": 19.1,
+        "samples_per_sec": 22500.0
+      }
+    ],
+    "replication_factor": 3,
+    "estimated_storage_gb": 452.62,
+    "cost_breakdown": [
+      {
+        "product": "Object store API ops",
+        "monthly_usd": 103.68
+      },
+      {
+        "product": "Object storage",
+        "monthly_usd": 10.41
+      }
+    ]
+  },
+  "gaps": []
+}
