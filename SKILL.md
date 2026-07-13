@@ -2,7 +2,7 @@
 name: oodle-discovery
 description: Discover a company's tech stack, observability stack, infrastructure scale, observability costs, and pain points across all environments. Detection is agent-driven; all volume and cost figures are computed by deterministic collector scripts with raw API evidence, merged into a single verifiable executive-level HTML report.
 metadata:
-  version: "2.0.0"
+  version: "2.1.0"
   author: oodle-ai
   repository: https://github.com/oodle-ai/discovery-agent-skills
   tags: oodle,discovery,observability,tech-stack,infrastructure,assessment

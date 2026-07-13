@@ -2,7 +2,7 @@
   "name": "oodle-discovery-skills",
   "displayName": "Oodle Discovery",
   "description": "Discover your tech stack, observability stack, infrastructure scale, observability costs, and pain points. Deterministic collectors measure volumes/costs with raw API evidence; produces a verifiable HTML report.",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "author": {
     "name": "Oodle",
     "email": "support@oodle.ai"
