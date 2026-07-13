@@ -239,9 +239,9 @@ For each detection below, plan to run the matching collector in Phase 5. A tool 
 | mimir / cortex pods or charts | `collectors/mimir/collect.py` *(planned)* |
 | elasticsearch / kibana pods, AWS ES domains | `collectors/elasticsearch/collect.py` *(planned)* |
 | opensearch pods, AWS OpenSearch/AOSS domains | `collectors/opensearch/collect.py` *(planned)* |
-| datadog agent/operator pods, DD CRDs, or the user says they use Datadog | `collectors/datadog/collect.py` |
+| datadog agent/operator pods, DD CRDs, or the user says they use Datadog | `collectors/datadog/collect.py` **+ `collectors/datadog/monthly_usage.py`** (monthly usage-by-SKU; see Phase 5.2.1) |
 | `aws` CLI authenticated (CloudWatch is in use by default on AWS) | `collectors/cloudwatch/collect.py` *(planned)* |
-| `gcloud` CLI authenticated | `collectors/gcp/collect.py` *(planned)* |
+| `gcloud` CLI authenticated | `collectors/gcp/collect.py` **+ `collectors/gcp/monthly_usage.py`** (monthly usage-by-SKU; see Phase 5.2.2) |
 
 For rows marked *(planned)*, the collector does not exist yet in this version of the skill: record the tool in `context.json.skipped_collectors` with reason "collector not yet available", and ask the user for representative numbers instead (recorded as `user_reported`).
 
@@ -272,6 +272,34 @@ Hard rules for this phase:
 - Do not write your own queries against observability backends (no PromQL, no `_cat` APIs, no usage API calls). The collectors own those.
 - Do not port-forward to in-cluster services yourself; collectors that need it do it internally with proper cleanup.
 - If the user volunteers numbers ("we do about 200GB of logs a day"), record them in `context.json.user_reported` — they never become figures.
+
+#### 5.2.1 Datadog — monthly usage-by-SKU (standard when the Datadog collector ran)
+
+Whenever you run `collectors/datadog/collect.py`, also run its monthly export. Same credentials; point it at its **own** output dir so its `summary.json` does not collide with the main Datadog collector's:
+
+```bash
+DD_API_KEY=... DD_APP_KEY=... uv run collectors/datadog/monthly_usage.py \
+  --site us1 --months 6 --output-dir ./discovery-output/datadog-monthly
+```
+
+- It writes a standalone CSV plus a `summary.json` whose `inventory` carries a per-SKU × calendar-month matrix. The report generator picks it up through the same `--summaries ./discovery-output/*/summary.json` glob (Phase 8.2) and renders a **"Monthly Usage by SKU"** section — no extra report flags.
+- It emits **no scalar figures**, so it never changes the executive cards or spend totals; it only adds the monthly breakdown section.
+- It is slower than the discovery collector (Datadog serves historical hourly windows slowly; a 6-month pull is ~1–2 min). If it errors, retry once, then record it in `context.json.skipped_collectors` and continue — the rest of the report is unaffected.
+- Skip it only if the user says they don't want the monthly breakdown, or asks for a different window (pass a different `--months`).
+
+#### 5.2.2 GCP — monthly usage-by-SKU (standard when the GCP collector ran)
+
+Whenever you run `collectors/gcp/collect.py`, also run its monthly export. Same `gcloud` auth and project selection; point it at its **own** output dir:
+
+```bash
+uv run collectors/gcp/monthly_usage.py \
+  --project my-project-1 --months 6 --output-dir ./discovery-output/gcp-monthly
+```
+
+- Same shape as the Datadog export: a CSV plus a `summary.json` whose `inventory` carries a per-SKU × month matrix, rendered into the shared **"Monthly Usage by SKU"** section via the Phase 8.2 glob. No scalar figures.
+- The "SKUs" are the observability signals it can reconstruct from Cloud Monitoring `billing/*` timeSeries: metrics `samples_ingested`, logs `bytes_ingested` (GB), traces `spans_ingested`, summed across the selected projects.
+- **Retention caveat — tell the user:** Cloud Monitoring retains billing timeSeries for only ~6 weeks, so months older than that come back **blank (a retention limit, not zero usage)**. The report carries this caveat inline. For a true multi-month history, GCP usage-by-SKU lives in the Cloud Billing **BigQuery export** (not yet collected here).
+- All-zero SKU rows are dropped by default (`--include-empty` keeps them). On error, retry once, then record in `context.json.skipped_collectors` and continue.
 
 #### 5.3 If no collector covers a detected tool
 

@@ -26,6 +26,13 @@ def datadog_collect():
 
 
 @pytest.fixture(scope="session")
+def datadog_monthly():
+    return load_module(
+        "datadog_monthly", REPO_ROOT / "collectors" / "datadog" / "monthly_usage.py"
+    )
+
+
+@pytest.fixture(scope="session")
 def cloudwatch_collect():
     return load_module(
         "cloudwatch_collect", REPO_ROOT / "collectors" / "cloudwatch" / "collect.py"
@@ -35,6 +42,11 @@ def cloudwatch_collect():
 @pytest.fixture(scope="session")
 def gcp_collect():
     return load_module("gcp_collect", REPO_ROOT / "collectors" / "gcp" / "collect.py")
+
+
+@pytest.fixture(scope="session")
+def gcp_monthly():
+    return load_module("gcp_monthly", REPO_ROOT / "collectors" / "gcp" / "monthly_usage.py")
 
 
 @pytest.fixture(scope="session")

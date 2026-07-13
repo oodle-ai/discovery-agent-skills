@@ -355,6 +355,54 @@ def spend_section(summaries: list[dict], ctx: dict) -> str:
     )
 
 
+MONTHLY_USAGE_KEYS = ("monthly_usage_by_sku", "monthly_usage_months", "monthly_usage_note")
+_MONTHLY_META_COLS = ("product_family", "usage_type", "unit", "aggregation")
+
+
+def monthly_usage_section(summaries: list[dict]) -> str:
+    """Render inventory.monthly_usage_by_sku (from a monthly_usage.py export) as
+    a per-SKU × month table. Values are shown verbatim — the generator never
+    recomputes; each SKU row already carries its unit and aggregation. Each
+    collector may attach its own `monthly_usage_note` (aggregation semantics,
+    data-retention caveats) rendered under its table."""
+    blocks: list[str] = []
+    for s in summaries:
+        inv = s.get("inventory", {}) or {}
+        sku_rows = inv.get("monthly_usage_by_sku")
+        if not sku_rows:
+            continue
+        # Column order: prefer the collector-declared month list; fall back to
+        # whatever month keys the first row carries beyond the meta columns.
+        months = inv.get("monthly_usage_months") or [
+            k for k in sku_rows[0] if k not in _MONTHLY_META_COLS
+        ]
+        headers = ["Product", "Usage type (SKU)", "Unit", "Agg"] + list(months)
+        rows = [
+            [
+                T.esc(r.get("product_family", "")),
+                f"<code>{T.esc(r.get('usage_type', ''))}</code>",
+                T.esc(r.get("unit", "")),
+                T.esc(r.get("aggregation", "")),
+            ]
+            + [T.esc(r.get(m, "")) for m in months]
+            for r in sku_rows
+        ]
+        if len(summaries) > 1:
+            blocks.append(f"<h3>{T.esc(s['collector'])}</h3>")
+        blocks.append(T.table(headers, rows))
+        note = inv.get("monthly_usage_note")
+        if note:
+            blocks.append(f'<p class="muted">{T.esc(note)}</p>')
+    if not blocks:
+        return ""
+    lead = (
+        '<p class="muted">Per-SKU volume by calendar month (current partial '
+        "month excluded). Values are shown verbatim from the collector; see each "
+        "row's Unit and Agg columns. Blank = no data for that month.</p>"
+    )
+    return T.section("Monthly Usage by SKU", lead + "\n".join(blocks))
+
+
 def coverage_section(summaries: list[dict], ctx: dict) -> str:
     parts = []
     cov_rows = []
@@ -488,8 +536,11 @@ def deep_dive_sections(summaries: list[dict]) -> str:
                 T.esc(window_s),
             ])
         inner.append(T.table(["Figure", "Value", "Status", "Method / Reason", "Window"], fig_rows))
-        if s.get("inventory"):
-            inner.append(render_inventory(s["inventory"]))
+        # the monthly SKU matrix has its own top-level section; don't repeat it here
+        inv = {k: v for k, v in (s.get("inventory") or {}).items()
+               if k not in MONTHLY_USAGE_KEYS}
+        if inv:
+            inner.append(render_inventory(inv))
         parts.append(T.deep_dive(f"{s['collector']} — collected details", "\n".join(inner)))
     return "\n".join(parts)
 
@@ -536,6 +587,7 @@ def build_report(summaries: list[dict], ctx: dict, title: str, date: str | None 
         tech_stack_section(ctx),
         observability_section(figures, ctx),
         spend_section(summaries, ctx),
+        monthly_usage_section(summaries),
         pain_points_section(ctx),
         coverage_section(summaries, ctx),
         deep_dive_sections(summaries),

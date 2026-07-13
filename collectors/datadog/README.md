@@ -17,6 +17,48 @@ The application key needs `usage_read` (and `billing_read` for estimated
 cost). Re-derive `summary.json` offline from saved evidence with
 `--report-only`.
 
+## Monthly usage-by-SKU export
+
+For usage/pricing reviews you often want per-SKU volume broken out by
+**calendar month** rather than the discovery report's single-window rates.
+`monthly_usage.py` produces that, reusing this collector's paginated v2
+hourly-usage fetch. Point it at its **own** output dir (so its `summary.json`
+doesn't collide with the discovery collector's):
+
+```bash
+DD_API_KEY=... DD_APP_KEY=... \
+uv run collectors/datadog/monthly_usage.py --site us5 --months 6 \
+  --output-dir ./discovery-output/datadog-monthly --tar
+```
+
+It writes two artifacts (plus redacted `evidence/`, and the `--tar` bundle):
+
+- **`datadog_monthly_usage_by_sku.csv`** — one row per `product_family` /
+  `usage_type`, one column per month, plus `unit` and `aggregation` columns.
+- **`summary.json`** — the same matrix under
+  `inventory.monthly_usage_by_sku`. It carries **no scalar figures**; the
+  report generator discovers it through the usual
+  `--summaries ./discovery-output/*/summary.json` glob and renders a **"Monthly
+  Usage by SKU"** section. No new report flags — run it like any collector.
+
+Every figure is self-documenting via its `unit` and `aggregation`:
+
+- `*_bytes` usage types are **summed** over the month and reported in **GB**.
+- Gauge counts (`host_count`, `container_count`, `num_custom_timeseries`) are
+  **averaged** — they are concurrent counts, so summing hourly samples would be
+  meaningless (matches Datadog's billing definition for custom metrics).
+- All other usage types (indexed events, sessions, spans) are **summed**.
+
+SKU rows with **zero/no usage in every month** (e.g. `aws_host_count` on an
+account that runs nothing on AWS, or `num_custom_timeseries` at 0) are dropped
+by default from both the CSV and the report so you only see SKUs you actually
+use. Pass `--include-empty` to keep the full matrix.
+
+Reports the last N *full* calendar months (current partial month excluded).
+`--report-only` re-derives the CSV from saved evidence with no API calls. Slow
+for long lookbacks — Datadog serves historical hourly windows at ~15s/week; a
+6-month pull is a couple of minutes.
+
 ## Figure ↔ API mapping (ground truth)
 
 | Figure | Source API | Derivation |

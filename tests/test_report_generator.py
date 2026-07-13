@@ -101,6 +101,57 @@ class TestBuildReport:
         assert fig["status"] == "unavailable"
 
 
+class TestMonthlyUsageSection:
+    def _monthly_summary(self):
+        return {
+            "schema_version": "1.0",
+            "collector": "datadog_monthly",
+            "collector_version": "1.0.0",
+            "run": {
+                "started_at": "2026-07-01T00:00:00Z",
+                "finished_at": "2026-07-01T00:01:00Z",
+                "target": "https://api.datadoghq.com",
+                "lookback": "6 full calendar months (2026-01..2026-06)",
+            },
+            "figures": [],
+            "inventory": {
+                "monthly_usage_months": ["May 2026", "Jun 2026"],
+                "monthly_usage_by_sku": [
+                    {"product_family": "logs", "usage_type": "ingested_events_bytes",
+                     "unit": "GB", "aggregation": "sum", "May 2026": "3.000", "Jun 2026": "2.000"},
+                    {"product_family": "timeseries", "usage_type": "num_custom_timeseries",
+                     "unit": "custom metrics (avg)", "aggregation": "avg",
+                     "May 2026": "1500.0", "Jun 2026": ""},
+                ],
+            },
+            "gaps": [],
+        }
+
+    def test_section_renders_matrix(self, report_gen, context):
+        html = report_gen.build_report([self._monthly_summary()], context, "Test Report")
+        assert "Monthly Usage by SKU" in html
+        assert "ingested_events_bytes" in html
+        assert "May 2026" in html and "Jun 2026" in html
+        assert "3.000" in html  # value shown verbatim
+        assert "num_custom_timeseries" in html
+
+    def test_matrix_not_duplicated_in_deep_dive(self, report_gen, context):
+        html = report_gen.build_report([self._monthly_summary()], context, "Test Report")
+        # the SKU matrix appears once (the dedicated section), not again as a
+        # generic inventory table in the deep-dive
+        assert html.count("num_custom_timeseries") == 1
+
+    def test_section_absent_when_no_monthly_inventory(self, report_gen, summary, context):
+        html = report_gen.build_report([summary], context, "Test Report")
+        assert "Monthly Usage by SKU" not in html
+
+    def test_per_collector_note_rendered(self, report_gen, context):
+        s = self._monthly_summary()
+        s["inventory"]["monthly_usage_note"] = "Retention caveat: only ~6 weeks retained."
+        html = report_gen.build_report([s], context, "Test Report")
+        assert "Retention caveat: only ~6 weeks retained." in html
+
+
 class TestMainCli:
     def test_end_to_end_strict(self, report_gen, tmp_path, monkeypatch, capsys):
         out = tmp_path / "report.html"
