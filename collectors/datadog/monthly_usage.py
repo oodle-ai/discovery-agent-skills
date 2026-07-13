@@ -29,9 +29,12 @@ Examples:
 
 Aggregation per usage_type:
     *_bytes            -> summed over the month, reported in GB (bytes / 1e9)
-    gauge counts       -> averaged over the month (host_count, container_count,
-                          num_custom_timeseries) — these are concurrent counts,
-                          not per-hour increments, so a sum would be meaningless
+    host/container     -> p99 of the hourly counts (host_count, container_count,
+      gauges              apm_host_count, ...) — concurrent counts that Datadog
+                          bills on a spike-excluded high-water mark, which p99
+                          approximates; a mean would understate the billed figure
+    custom metrics     -> averaged over the month (num_custom_timeseries) —
+                          Datadog bills custom metrics on the hourly average
     everything else    -> summed over the month (events, sessions, spans, ...)
 The unit and aggregation used are written into the CSV so every number is
 self-documenting and matches Datadog's Plan & Usage page for the same window.
@@ -44,6 +47,7 @@ SKUs you actually use; pass --include-empty to keep the full matrix.
 from __future__ import annotations
 
 import csv
+import math
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
@@ -75,21 +79,26 @@ VERSION = "1.0.0"
 MONTH_ABBR = ["", "Jan", "Feb", "Mar", "Apr", "May", "Jun",
               "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
 
-# usage_types that are point-in-time (concurrent) counts, not per-hour
-# increments: averaged over the month rather than summed.
-GAUGE_USAGE_TYPES = {
+# Point-in-time (concurrent) counts, not per-hour increments — so they are
+# NOT summed over the month. Datadog bills host/container gauges on a
+# spike-excluded high-water mark (drops the top ~1% of hours), which the p99 of
+# the hourly counts approximates; a plain mean understates the billed figure.
+# Custom metrics are billed on the hourly average, so that gauge stays on avg.
+P99_USAGE_TYPES = {
     "host_count",
     "container_count",
-    "num_custom_timeseries",
     "apm_host_count",
     "avg_apm_host_count",
     "fargate_container_count",
     "npm_host_count",
 }
+AVG_USAGE_TYPES = {
+    "num_custom_timeseries",
+}
 
 _GAUGE_UNIT = {
-    "host_count": "hosts (avg)",
-    "container_count": "containers (avg)",
+    "host_count": "hosts (p99)",
+    "container_count": "containers (p99)",
     "num_custom_timeseries": "custom metrics (avg)",
 }
 
@@ -113,12 +122,28 @@ def month_label(key: str) -> str:
 
 
 def classify(usage_type: str) -> tuple[str, str]:
-    """(unit, aggregation) for a usage_type. aggregation is 'sum' or 'avg'."""
+    """(unit, aggregation) for a usage_type. aggregation is 'sum', 'avg', or 'p99'."""
     if usage_type.endswith("_bytes"):
         return "GB", "sum"
-    if usage_type in GAUGE_USAGE_TYPES:
+    if usage_type in P99_USAGE_TYPES:
+        return _GAUGE_UNIT.get(usage_type, "count (p99)"), "p99"
+    if usage_type in AVG_USAGE_TYPES:
         return _GAUGE_UNIT.get(usage_type, "count (avg)"), "avg"
     return "count", "sum"
+
+
+def percentile(samples: list[float], p: float) -> float:
+    """Nearest-rank percentile (ascending sort), p in 0..100.
+
+    For host/container gauges this approximates Datadog's billing method of
+    taking the high-water mark after excluding the top (100 - p)% of hourly
+    samples, so a handful of spike hours don't inflate the reported figure.
+    """
+    if not samples:
+        return 0.0
+    ordered = sorted(samples)
+    k = max(1, math.ceil(p / 100 * len(ordered)))
+    return ordered[k - 1]
 
 
 def aggregate_monthly(
@@ -156,7 +181,12 @@ def aggregate_monthly(
             if not samples:
                 values[month] = None
                 continue
-            v = sum(samples) / len(samples) if agg == "avg" else sum(samples)
+            if agg == "avg":
+                v = sum(samples) / len(samples)
+            elif agg == "p99":
+                v = percentile(samples, 99)
+            else:
+                v = sum(samples)
             if unit == "GB":
                 v = v / 1e9
             values[month] = v
@@ -259,9 +289,10 @@ def write_summary(
     summary.inventory["monthly_usage_months"] = [month_label(m) for m in months]
     summary.inventory["monthly_usage_by_sku"] = inventory_rows(rows, months)
     summary.inventory["monthly_usage_note"] = (
-        "*_bytes SKUs are summed and reported in GB; concurrent-count gauges "
-        "(hosts, containers, custom metrics) are averaged; everything else is "
-        "summed. Matches Datadog's Plan & Usage page for the same window."
+        "*_bytes SKUs are summed and reported in GB. Host/container gauges use "
+        "the p99 of hourly counts (approximates Datadog's spike-excluded "
+        "high-water-mark billing); custom metrics use the hourly average; "
+        "everything else is summed."
     )
     return summary.write(output_dir)
 

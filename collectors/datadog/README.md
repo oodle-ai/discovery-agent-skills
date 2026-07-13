@@ -44,9 +44,12 @@ It writes two artifacts (plus redacted `evidence/`, and the `--tar` bundle):
 Every figure is self-documenting via its `unit` and `aggregation`:
 
 - `*_bytes` usage types are **summed** over the month and reported in **GB**.
-- Gauge counts (`host_count`, `container_count`, `num_custom_timeseries`) are
-  **averaged** — they are concurrent counts, so summing hourly samples would be
-  meaningless (matches Datadog's billing definition for custom metrics).
+- Host/container gauges (`host_count`, `container_count`, `apm_host_count`, …)
+  use the **p99** of the hourly counts. Datadog bills these on a spike-excluded
+  high-water mark (it drops the top ~1% of hours), which p99 approximates; a
+  plain mean understates the billed figure.
+- Custom metrics (`num_custom_timeseries`) are **averaged** — Datadog bills
+  custom metrics on the hourly average.
 - All other usage types (indexed events, sessions, spans) are **summed**.
 
 SKU rows with **zero/no usage in every month** (e.g. `aws_host_count` on an

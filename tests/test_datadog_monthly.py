@@ -45,8 +45,38 @@ def test_classify(datadog_monthly):
     c = datadog_monthly.classify
     assert c("ingested_events_bytes") == ("GB", "sum")
     assert c("indexed_events_count") == ("count", "sum")
+    # custom metrics -> avg (Datadog bills them on the hourly average)
     assert c("num_custom_timeseries") == ("custom metrics (avg)", "avg")
-    assert c("host_count") == ("hosts (avg)", "avg")
+    # host/container gauges -> p99 (approximates spike-excluded high-water mark)
+    assert c("host_count") == ("hosts (p99)", "p99")
+    assert c("container_count") == ("containers (p99)", "p99")
+    assert c("apm_host_count") == ("count (p99)", "p99")
+
+
+def test_percentile_nearest_rank(datadog_monthly):
+    pct = datadog_monthly.percentile
+    assert pct([5], 99) == 5
+    assert pct(list(range(1, 101)), 99) == 99   # 1..100, p99 -> 99
+    assert pct(list(range(1, 101)), 100) == 100  # p100 -> max
+    # top 1% of hours excluded: 198 quiet hours + 2 spikes -> p99 ignores spikes
+    samples = [10] * 198 + [100, 100]
+    assert pct(samples, 99) == 10
+
+
+def test_aggregate_uses_p99_for_host_gauges_not_mean(datadog_monthly):
+    m = datadog_monthly
+    # 198 hours at 10 hosts, 2 spike hours at 100 -> p99 = 10 (spikes excluded),
+    # while a mean would be inflated to ~10.9 and max would be 100
+    hours = [(f"2026-06-{d // 24 + 1:02d}T{d % 24:02d}:00:00+00:00",
+              {"host_count": 10}) for d in range(198)]
+    hours += [("2026-06-09T10:00:00+00:00", {"host_count": 100}),
+              ("2026-06-09T11:00:00+00:00", {"host_count": 100})]
+    results = {"usage_hourly_infra_hosts": _hourly(hours)}
+    rows = m.aggregate_monthly(results, ["infra_hosts"], MONTHS)
+    host = next(r for r in rows if r["usage_type"] == "host_count")
+    assert host["aggregation"] == "p99"
+    assert host["unit"] == "hosts (p99)"
+    assert host["values"]["2026-06"] == 10  # p99, not the 100 spike or ~10.9 mean
 
 
 def test_aggregate_monthly_sums_bytes_to_gb_and_averages_gauges(datadog_monthly):
