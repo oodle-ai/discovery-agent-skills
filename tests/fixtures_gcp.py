@@ -201,6 +201,12 @@ LOG_BILLING_INGEST = _make_timeseries_response(
     "logging.googleapis.com/billing/bytes_ingested", TOTAL_LOG_BYTES
 )
 
+# monitoring metric bytes ingested (GMP): 35 GB over 7d = 5 GB/day
+TOTAL_METRIC_BYTES = 35_000_000_000
+METRIC_BILLING_BYTES = _make_timeseries_response(
+    "monitoring.googleapis.com/billing/bytes_ingested", TOTAL_METRIC_BYTES
+)
+
 LOG_BILLING_MONTHLY = _make_cumulative_timeseries_response(
     "logging.googleapis.com/billing/monthly_bytes_ingested", MONTHLY_LOG_BYTES
 )

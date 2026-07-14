@@ -325,7 +325,8 @@ def main() -> int:
                 for sku in GCP_SKUS:
                     key = f"monthly_ts_{sku['key']}_{gcp.safe_project(project)}"
                     print(f"collecting {sku['usage_type']} ({project})")
-                    res = gcp.query_timeseries(client, project, sku["metric"], lookback_s)
+                    res = gcp.query_timeseries(
+                        client, project, sku["metric"], lookback_s, gcp.DELTA_AGGREGATION)
                     if res.ok:
                         results[key] = res.data
                         ev.write(

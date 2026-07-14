@@ -18,11 +18,24 @@ uv run collectors/gcp/collect.py --project my-project-1 --lookback 30d \
 |---|---|---|
 | `metrics.total_count` / `metrics.custom_metrics_count` | `GET /v3/projects/*/metricDescriptors` | count of descriptors; custom = `custom.`/`external.`/`workload.`/`prometheus.googleapis.com/` prefixes |
 | `metrics.samples_per_sec` | `timeSeries` `monitoring.googleapis.com/billing/samples_ingested` | sum of DELTA points / lookback seconds |
+| `metrics.ingest_gb_per_day` | `timeSeries` `monitoring.googleapis.com/billing/bytes_ingested` | sum of DELTA bytes / lookback days, → GB (GMP metric volume) |
 | `logs.ingest_gb_per_day` | `timeSeries` `logging.googleapis.com/billing/bytes_ingested` | sum of DELTA bytes / lookback days, → GB |
 | `logs.stored_gb` | `timeSeries` `.../billing/monthly_bytes_ingested` | latest cumulative value (month-to-date), → GB |
 | `traces.spans_per_sec` | `timeSeries` `cloudtrace.googleapis.com/billing/spans_ingested` | sum of DELTA points / lookback seconds |
 | `alerts.monitor_count` | `GET /v3/projects/*/alertPolicies` | count of policies |
 | `cost.monthly_usd` | — | **unavailable**: GCP has no cost query API; requires the Cloud Billing BigQuery export |
+
+**Server-side aggregation.** All DELTA billing `timeSeries` queries send
+`aggregation.perSeriesAligner=ALIGN_DELTA` + `crossSeriesReducer=REDUCE_SUM` (daily
+buckets), so Google reduces the series before responding. Without this a raw
+`view=FULL` pull of `billing/samples_ingested` over 30d for a busy project exceeds
+Google's response-size limit and returns nothing — undercounting the busiest
+projects.
+
+**Access preflight.** Before collecting, each project gets a cheap
+`timeSeries.list` check (`monitoring.timeSeries.list`); any that fail are listed
+in a `PASS/FAIL` log and recorded as a Coverage & Gaps entry, so incomplete
+project coverage is never silent.
 
 ## Monthly usage-by-SKU export
 
