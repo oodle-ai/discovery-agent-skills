@@ -350,8 +350,12 @@ def fetch_metrics_list(
 # done in the derivation (sum for count metrics, time-average for gauges).
 ESTIMATED_USAGE_QUERIES = {
     "est_logs_ingested_bytes": "sum:datadog.estimated_usage.logs.ingested_bytes{*}.as_count()",
+    "est_logs_indexed_events":
+        "sum:datadog.estimated_usage.logs.ingested_events{datadog_is_excluded:false}.as_count()",
     "est_metrics_custom": "sum:datadog.estimated_usage.metrics.custom{*}",
     "est_hosts": "sum:datadog.estimated_usage.hosts{*}.rollup(max, 3600)",
+    "est_apm_ingested_bytes": "sum:datadog.estimated_usage.apm.ingested_bytes{*}.as_count()",
+    "est_rum_sessions": "sum:datadog.estimated_usage.rum.ingested_sessions{*}.as_count()",
     "est_all_cost": "sum:all.cost{*}",
 }
 
@@ -532,6 +536,33 @@ def est_scalar(results: dict[str, Any], key: str) -> float | None:
     if not pts:
         return None
     return sum(v for _, v in pts) / len(pts)
+
+
+def add_est_per_day_figure(
+    summary: SummaryWriter,
+    results: dict[str, Any],
+    figure_id: str,
+    est_key: str,
+    metric_query: str,
+    divisor: float = 1.0,
+) -> bool:
+    """Add a per-day figure from a count-type estimated_usage metric (sum of
+    points over the window / days covered, optionally / divisor for bytes->GB).
+    Returns False if the query returned no points, so the caller can fall back."""
+    pts = query_points(results.get(est_key))
+    if not pts:
+        return False
+    value = sum(v for _, v in pts) / query_span_days(pts) / divisor
+    exp = summary.expected[figure_id]
+    unit_note = " / 1e9 (bytes -> GB)" if divisor == 1e9 else ""
+    summary.add_figure(Figure(
+        id=figure_id, label=exp.label, value=round(value, 2), unit=exp.unit, status="ok",
+        method=f"sum of {metric_query} over the window / days covered{unit_note} "
+        "(estimated_usage; metrics scope)",
+        source_api=f"GET /api/v1/query?query={metric_query}",
+        evidence_files=[f"evidence/{est_key}.json"],
+    ))
+    return True
 
 
 def build_logs_ingest_figure(
@@ -941,18 +972,32 @@ def build_summary(
         )
     # logs.ingest_gb_per_day prefers sources that count Logging without Limits
     build_logs_ingest_figure(results, fetches, summary, lookback_days)
-    add_hourly_figure(
-        summary, results, fetches,
-        "datadog.logs_indexed_events_per_day", "logs", "indexed_events_count", "per_day",
-    )
-    add_hourly_figure(
-        summary, results, fetches,
-        "traces.ingest_gb_per_day", "ingested_spans", "ingested_events_bytes", "per_day_gb",
-    )
-    add_hourly_figure(
-        summary, results, fetches,
-        "datadog.rum_sessions_per_day", "rum", "rum_total_session_count", "per_day",
-    )
+    # The rest mirror the Usage & Cost dashboard metrics, with the classic hourly
+    # usage family as the fallback when the metric isn't readable.
+    if not add_est_per_day_figure(
+        summary, results, "datadog.logs_indexed_events_per_day", "est_logs_indexed_events",
+        "sum:datadog.estimated_usage.logs.ingested_events{datadog_is_excluded:false}.as_count()",
+    ):
+        add_hourly_figure(
+            summary, results, fetches,
+            "datadog.logs_indexed_events_per_day", "logs", "indexed_events_count", "per_day",
+        )
+    if not add_est_per_day_figure(
+        summary, results, "traces.ingest_gb_per_day", "est_apm_ingested_bytes",
+        "sum:datadog.estimated_usage.apm.ingested_bytes{*}.as_count()", 1e9,
+    ):
+        add_hourly_figure(
+            summary, results, fetches,
+            "traces.ingest_gb_per_day", "ingested_spans", "ingested_events_bytes", "per_day_gb",
+        )
+    if not add_est_per_day_figure(
+        summary, results, "datadog.rum_sessions_per_day", "est_rum_sessions",
+        "sum:datadog.estimated_usage.rum.ingested_sessions{*}.as_count()",
+    ):
+        add_hourly_figure(
+            summary, results, fetches,
+            "datadog.rum_sessions_per_day", "rum", "rum_total_session_count", "per_day",
+        )
 
     # alerts.monitor_count
     monitors = results.get("monitors")

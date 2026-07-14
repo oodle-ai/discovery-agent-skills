@@ -322,6 +322,30 @@ class TestEstimatedUsagePath:
         summary = run_collector(datadog_collect, tmp_path, monkeypatch)
         assert figures_by_id(summary)["hosts.count"]["value"] == 142
 
+    def test_traces_prefer_estimated_usage_apm_bytes(
+        self, datadog_collect, tmp_path, monkeypatch, respx_mock
+    ):
+        t = 1_700_000_000_000
+        mock_datadog(respx_mock, query_responses={
+            "apm.ingested_bytes": [{"pointlist": [[t, 3e9], [t + 86_400_000, 3e9]]}],
+        })
+        traces = figures_by_id(run_collector(datadog_collect, tmp_path, monkeypatch))[
+            "traces.ingest_gb_per_day"]
+        assert traces["value"] == pytest.approx(6.0)  # 6 GB over 1 day, not the 12 classic
+        assert "estimated_usage" in traces["method"]
+
+    def test_rum_prefers_estimated_usage_sessions(
+        self, datadog_collect, tmp_path, monkeypatch, respx_mock
+    ):
+        t = 1_700_000_000_000
+        mock_datadog(respx_mock, query_responses={
+            "rum.ingested_sessions": [{"pointlist": [[t, 1000.0], [t + 86_400_000, 1000.0]]}],
+        })
+        rum = figures_by_id(run_collector(datadog_collect, tmp_path, monkeypatch))[
+            "datadog.rum_sessions_per_day"]
+        assert rum["value"] == pytest.approx(2000.0)  # 2000 sessions/day
+        assert "estimated_usage" in rum["method"]
+
     def test_custom_metrics_prefers_estimated_usage_over_hourly(
         self, datadog_collect, tmp_path, monkeypatch, respx_mock
     ):
