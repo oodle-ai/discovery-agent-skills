@@ -201,6 +201,40 @@ def test_inventory_rows_carry_month_labels_and_match_csv_formatting(datadog_mont
     assert bytes_row["Jan 2026"] == ""  # no data -> empty, never a fabricated 0
 
 
+def test_empty_months_flags_windows_with_no_records(datadog_monthly):
+    m = datadog_monthly
+    # only May and June returned any records; Jan–Apr are collection gaps
+    results = {
+        "usage_hourly_logs": _hourly([
+            ("2026-05-10T00:00:00+00:00", _log(1e9, 100)),
+            ("2026-06-01T00:00:00+00:00", _log(1e9, 100)),
+        ]),
+    }
+    missing = m.empty_months(results, ["logs"], MONTHS)
+    assert missing == ["2026-01", "2026-02", "2026-03", "2026-04"]
+
+
+def test_write_summary_records_gap_for_missing_months(tmp_path, datadog_monthly):
+    import json
+
+    m = datadog_monthly
+    results = {
+        "usage_hourly_logs": _hourly([("2026-06-01T00:00:00+00:00", _log(2e9, 100))]),
+    }
+    rows = m.drop_empty_rows(m.aggregate_monthly(results, ["logs"], MONTHS))
+    missing = m.empty_months(results, ["logs"], MONTHS)  # Jan–May missing
+    path = m.write_summary(
+        tmp_path, rows, MONTHS, "datadoghq.com", {"site": "us1", "months": 6},
+        missing_months=missing,
+    )
+    doc = json.loads(path.read_text())
+    assert doc["gaps"], "missing months must produce a gap, not silent blanks"
+    assert doc["gaps"][0]["reason"] == "not_collected"
+    assert "INCOMPLETE" in doc["inventory"]["monthly_usage_note"]
+    from lib.summary import validate_summary
+    validate_summary(doc)
+
+
 def test_write_summary_emits_valid_summary_with_matrix_in_inventory(tmp_path, datadog_monthly):
     import json
 

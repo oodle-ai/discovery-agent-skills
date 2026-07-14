@@ -34,7 +34,7 @@ from lib.http import FetchResult, HttpClient  # noqa: E402
 from lib.summary import ExpectedFigure, Figure, SummaryWriter  # noqa: E402
 
 COLLECTOR = "datadog"
-VERSION = "2.0.0"
+VERSION = "2.1.0"
 
 DD_SITES: dict[str, str] = {
     "us1": "datadoghq.com",
@@ -222,22 +222,35 @@ def fetch_hourly_usage(
     records: list[Any] = []
     seen: set[str] = set()  # chunk boundaries can return the boundary hour twice
     first_error: FetchResult | None = None
+    failures: list[dict[str, str]] = []
     with ThreadPoolExecutor(max_workers=HOURLY_CHUNK_WORKERS) as pool:
-        chunk_results = pool.map(
+        chunk_results = list(pool.map(
             lambda c: _fetch_hourly_chunk(client, families_param, c[0], c[1]), chunks
-        )
-        for chunk_records, err in chunk_results:
-            if err is not None and first_error is None:
+        ))
+    for (c_start, c_end), (chunk_records, err) in zip(chunks, chunk_results, strict=True):
+        if err is not None:
+            if first_error is None:
                 first_error = err
-            for rec in chunk_records:
-                attrs = rec.get("attributes", {})
-                key = rec.get("id") or f"{attrs.get('product_family')}|{attrs.get('timestamp')}"
-                if key in seen:
-                    continue
-                seen.add(key)
-                records.append(rec)
+            # Record which windows were lost so partial data is never mistaken
+            # for complete data (historical windows time out under load).
+            failures.append({
+                "start": c_start.strftime("%Y-%m-%dT%H:00:00Z"),
+                "end": c_end.strftime("%Y-%m-%dT%H:00:00Z"),
+                "error": err.error or "unknown",
+                "reason": err.gap_reason or "api_error",
+            })
+        for rec in chunk_records:
+            attrs = rec.get("attributes", {})
+            key = rec.get("id") or f"{attrs.get('product_family')}|{attrs.get('timestamp')}"
+            if key in seen:
+                continue
+            seen.add(key)
+            records.append(rec)
+    if failures:
+        results["hourly_usage_failures"] = failures
+        print(f"  WARN hourly usage: {len(failures)}/{len(chunks)} window(s) failed "
+              "(usage figures may undercount)")
     if not records and first_error is not None:
-        print(f"  WARN hourly usage: {first_error.error}")
         return {f"usage_hourly_{f}": first_error for f in families}
     by_family: dict[str, list[Any]] = {f: [] for f in families}
     for rec in records:
@@ -325,6 +338,92 @@ def fetch_metrics_list(
         results["metrics_list"] = res.data
         ev.write("metrics_list", res.data, source_api="GET /api/v1/metrics?from=<2h ago>")
     return res
+
+
+# The datadog.estimated_usage.* metrics mirror the Usage & Cost page. They read
+# with metrics/timeseries scope (no usage_read/billing_read) and — unlike the
+# classic hourly-usage product families — count Logging without Limits ("twol")
+# ingestion, so they surface volume the usage APIs report as 0. Queried as scalar
+# timeseries via /api/v1/query.
+ESTIMATED_USAGE_QUERIES = {
+    "est_logs_ingested_bytes": "sum:datadog.estimated_usage.logs.ingested_bytes{*}.as_count()",
+    "est_metrics_custom": "avg:datadog.estimated_usage.metrics.custom{*}",
+    "est_hosts": "avg:datadog.estimated_usage.hosts{*}",
+    "est_all_cost": "sum:all.cost{*}.as_count()",
+}
+
+
+def fetch_estimated_usage(
+    client: HttpClient,
+    now: datetime,
+    lookback_days: float,
+    ev: EvidenceWriter,
+    results: dict[str, Any],
+) -> dict[str, FetchResult]:
+    """Query the datadog.estimated_usage.* metrics via /api/v1/query.
+
+    Best-effort and permission-friendly: each query is independent, and a
+    failure just leaves that figure to the usage-API path. Cost uses the
+    current month so all.cost reflects the billed month.
+    """
+    frm = int((now - timedelta(days=max(lookback_days, 1))).timestamp())
+    cost_frm = int(now.replace(day=1, hour=0, minute=0, second=0, microsecond=0).timestamp())
+    to = int(now.timestamp())
+    print("collecting estimated_usage metrics")
+    fetches: dict[str, FetchResult] = {}
+    for key, q in ESTIMATED_USAGE_QUERIES.items():
+        start = cost_frm if key == "est_all_cost" else frm
+        res = client.get_json(
+            "/api/v1/query", params={"from": str(start), "to": str(to), "query": q})
+        if res.ok:
+            results[key] = res.data
+            ev.write(key, res.data, source_api=f"GET /api/v1/query?query={q}")
+        else:
+            print(f"  WARN {key}: {res.error}")
+        fetches[key] = res
+    return fetches
+
+
+def query_points(data: dict | None) -> list[tuple[int, float]]:
+    """Flatten all series pointlists from a /api/v1/query response into
+    (timestamp_ms, value) pairs, dropping null points."""
+    if not data:
+        return []
+    out: list[tuple[int, float]] = []
+    for s in data.get("series", []):
+        for pt in s.get("pointlist", []):
+            if len(pt) >= 2 and pt[1] is not None:
+                out.append((int(pt[0]), float(pt[1])))
+    return out
+
+
+def query_span_days(points: list[tuple[int, float]]) -> float:
+    """Days spanned by a pointlist (ms timestamps), min 1 to avoid div-by-zero."""
+    if len(points) < 2:
+        return 1.0
+    ts = [t for t, _ in points]
+    return max((max(ts) - min(ts)) / 1000.0 / 86400.0, 1.0)
+
+
+def summary_logs_ingest_gb_per_day(
+    results: dict[str, Any], now: datetime, lookback_days: float
+) -> float | None:
+    """Log ingestion GB/day from /api/v1/usage/summary, covering Logging without
+    Limits: twol_ingested_events_bytes (+ logs_live_ingested_bytes). Classic
+    ingested_events_bytes is 0 for Logging-without-Limits orgs, so this is the
+    fallback that keeps log volume from reading as zero."""
+    summ = results.get("usage_summary")
+    if not isinstance(summ, dict):
+        return None
+    total_bytes = 0.0
+    for field in ("twol_ingested_events_bytes_agg_sum", "logs_live_ingested_bytes_agg_sum"):
+        v = summ.get(field)
+        if isinstance(v, (int, float)):
+            total_bytes += float(v)
+    if total_bytes <= 0:
+        return None
+    days = max(lookback_days, 28.0)  # summary is month-bucketed
+    return total_bytes / days / 1e9
 
 
 # ── derivation (deterministic; every output figure is computed here) ────
@@ -421,6 +520,91 @@ def add_hourly_figure(
             time_window=window_of(values),
             evidence_files=[f"evidence/{key}.json"],
         )
+    )
+
+
+def est_scalar(results: dict[str, Any], key: str) -> float | None:
+    """Average of an estimated_usage query's points (for gauge-like metrics)."""
+    pts = query_points(results.get(key))
+    if not pts:
+        return None
+    return sum(v for _, v in pts) / len(pts)
+
+
+def build_logs_ingest_figure(
+    results: dict[str, Any],
+    fetches: dict[str, FetchResult],
+    summary: SummaryWriter,
+    lookback_days: float,
+) -> None:
+    """logs.ingest_gb_per_day, preferring sources that count Logging without
+    Limits: estimated_usage metric > usage-summary twol > classic hourly.
+
+    Classic hourly ingested_events_bytes reads 0 for Logging-without-Limits
+    orgs, so on its own it silently reports zero for real log volume.
+    """
+    exp = summary.expected["logs.ingest_gb_per_day"]
+
+    # 1) datadog.estimated_usage.logs.ingested_bytes — precise, counts twol
+    pts = query_points(results.get("est_logs_ingested_bytes"))
+    total = sum(v for _, v in pts) if pts else 0.0
+    if total > 0:
+        gb_day = total / query_span_days(pts) / 1e9
+        summary.add_figure(Figure(
+            id="logs.ingest_gb_per_day", label=exp.label,
+            value=round(gb_day, 2), unit=exp.unit, status="ok",
+            method="sum of datadog.estimated_usage.logs.ingested_bytes over the window "
+            "/ days covered (includes Logging without Limits ingestion)",
+            source_api="GET /api/v1/query"
+            "?query=sum:datadog.estimated_usage.logs.ingested_bytes{*}.as_count()",
+            evidence_files=["evidence/est_logs_ingested_bytes.json"],
+        ))
+        return
+
+    # 2) usage/summary twol + live (Logging without Limits), month-bucketed
+    twol = summary_logs_ingest_gb_per_day(results, datetime.now(UTC), lookback_days)
+    if twol is not None:
+        summary.add_figure(Figure(
+            id="logs.ingest_gb_per_day", label=exp.label,
+            value=round(twol, 2), unit=exp.unit, status="estimated",
+            method="twol_ingested_events_bytes (+ live) from usage/summary / days "
+            "(Logging without Limits; approximate GB/day from month-bucketed totals)",
+            source_api="GET /api/v1/usage/summary",
+            evidence_files=["evidence/usage_summary.json"],
+            notes="classic hourly ingested_events_bytes is 0 for this org "
+            "(Logging without Limits)",
+        ))
+        return
+
+    # 3) classic hourly ingested_events_bytes (0 for Logging-without-Limits orgs)
+    values = hourly_values(results.get("usage_hourly_logs"), "ingested_events_bytes")
+    if values:
+        gb_day = (per_day(values) or 0.0) / 1e9
+        note = None
+        if gb_day == 0:
+            note = ("classic ingested_events_bytes is 0 — if this org uses Logging "
+                    "without Limits, grant metrics read so "
+                    "datadog.estimated_usage.logs.ingested_bytes can be queried")
+        summary.add_figure(Figure(
+            id="logs.ingest_gb_per_day", label=exp.label,
+            value=round(gb_day, 2), unit=exp.unit, status="ok",
+            method="sum of hourly 'ingested_events_bytes' / days covered, bytes -> GB (1e9)",
+            source_api="GET /api/v2/usage/hourly_usage",
+            query="product_family=logs, usage_type=ingested_events_bytes",
+            time_window=window_of(values),
+            evidence_files=["evidence/usage_hourly_logs.json"],
+            notes=note,
+        ))
+        return
+
+    res = fetches.get("usage_hourly_logs")
+    reason = res.gap_reason if res is not None and res.gap_reason else "not_configured"
+    detail = (res.error if res is not None and res.error
+              else "no log ingestion in hourly usage, usage/summary, or estimated_usage")
+    summary.mark_unavailable(
+        "logs.ingest_gb_per_day", reason, detail,
+        remediation="for Logging without Limits, grant metrics read for "
+        "datadog.estimated_usage.logs.ingested_bytes",
     )
 
 
@@ -595,6 +779,30 @@ def build_cost_figures(
     res = fetches.get("estimated_cost")
     reason = res.gap_reason if res and res.gap_reason else "api_error"
     api_err = res.error if res and res.error else "estimated cost not present in response"
+
+    # all.cost metric (metrics scope) — a real measured cost, better than a
+    # list-price estimate, and readable when the billing API returns 403.
+    cost_pts = query_points(results.get("est_all_cost"))
+    total_all_cost = sum(v for _, v in cost_pts)
+    if total_all_cost > 0:
+        summary.add_figure(Figure(
+            id="cost.monthly_usd",
+            label="Datadog cost, month to date (all.cost)",
+            value=round(total_all_cost, 2), unit="USD", status="estimated",
+            method="sum of all.cost over the current month (Datadog's own cost metric; "
+            "readable with metrics scope when the billing API is not)",
+            source_api="GET /api/v1/query?query=sum:all.cost{*}.as_count()",
+            evidence_files=["evidence/est_all_cost.json"],
+            notes=f"estimated_cost API unavailable ({reason}): {api_err}",
+        ))
+        summary.add_gap(
+            "cost", ["cost.monthly_usd"], reason,
+            f"estimated_cost API unavailable ({api_err}); using the all.cost metric "
+            "(month-to-date) instead of the billing API",
+            remediation="grant billing_read on the application key for the billing-API number",
+        )
+        return
+
     est_total, comps = estimate_cost_from_usage(results)
     if comps:
         summary.add_figure(Figure(
@@ -627,10 +835,32 @@ def build_cost_figures(
         )
 
 
+def add_est_scalar_figure(
+    summary: SummaryWriter,
+    results: dict[str, Any],
+    figure_id: str,
+    est_key: str,
+    metric_query: str,
+) -> bool:
+    """Add a figure from an estimated_usage query's average, if present."""
+    v = est_scalar(results, est_key)
+    if v is None:
+        return False
+    exp = summary.expected[figure_id]
+    summary.add_figure(Figure(
+        id=figure_id, label=exp.label, value=round(v, 2), unit=exp.unit, status="ok",
+        method=f"average of {metric_query} over the window (estimated_usage; metrics scope)",
+        source_api=f"GET /api/v1/query?query={metric_query}",
+        evidence_files=[f"evidence/{est_key}.json"],
+    ))
+    return True
+
+
 def build_summary(
     results: dict[str, Any],
     fetches: dict[str, FetchResult],
     summary: SummaryWriter,
+    lookback_days: float = 30.0,
 ) -> None:
     # hosts.count — real-time active hosts
     hosts = results.get("hosts_totals")
@@ -648,6 +878,11 @@ def build_summary(
                 notes=f"total_up={hosts.get('total_up')}",
             )
         )
+    elif add_est_scalar_figure(
+        summary, results, "hosts.count", "est_hosts",
+        "avg:datadog.estimated_usage.hosts{*}",
+    ):
+        pass  # hosts/totals unavailable; estimated_usage covered it
     else:
         res = fetches.get("hosts_totals")
         summary.mark_unavailable(
@@ -680,16 +915,25 @@ def build_summary(
         )
 
     # Usage-derived figures (each records its own gap when missing)
-    add_hourly_figure(
-        summary, results, fetches,
-        "metrics.custom_metrics_count", "timeseries", "num_custom_timeseries", "avg",
-        remediation="custom metrics usage requires the timeseries product family; "
-        "verify the app key has usage_read",
-    )
-    add_hourly_figure(
-        summary, results, fetches,
-        "logs.ingest_gb_per_day", "logs", "ingested_events_bytes", "per_day_gb",
-    )
+    if hourly_values(results.get("usage_hourly_timeseries"), "num_custom_timeseries"):
+        add_hourly_figure(
+            summary, results, fetches,
+            "metrics.custom_metrics_count", "timeseries", "num_custom_timeseries", "avg",
+            remediation="custom metrics usage requires the timeseries product family; "
+            "verify the app key has usage_read",
+        )
+    elif not add_est_scalar_figure(
+        summary, results, "metrics.custom_metrics_count", "est_metrics_custom",
+        "avg:datadog.estimated_usage.metrics.custom{*}",
+    ):
+        add_hourly_figure(
+            summary, results, fetches,
+            "metrics.custom_metrics_count", "timeseries", "num_custom_timeseries", "avg",
+            remediation="custom metrics usage requires the timeseries product family; "
+            "verify the app key has usage_read",
+        )
+    # logs.ingest_gb_per_day prefers sources that count Logging without Limits
+    build_logs_ingest_figure(results, fetches, summary, lookback_days)
     add_hourly_figure(
         summary, results, fetches,
         "datadog.logs_indexed_events_per_day", "logs", "indexed_events_count", "per_day",
@@ -732,6 +976,19 @@ def build_summary(
             res.error if res and res.error else "monitor list unavailable",
         )
 
+    # Partial hourly-usage fetch: never let dropped windows read as complete data
+    failures = results.get("hourly_usage_failures")
+    if failures:
+        windows = ", ".join(f"{f['start'][:10]}→{f['end'][:10]}" for f in failures[:6])
+        more = f" (+{len(failures) - 6} more)" if len(failures) > 6 else ""
+        summary.add_gap(
+            "usage", [], failures[0].get("reason", "api_error"),
+            f"{len(failures)} hourly-usage window(s) failed and were skipped, so usage "
+            f"volumes may undercount and some months may be missing: {windows}{more}",
+            remediation="re-run (historical windows time out under load; a retry usually "
+            "succeeds), or narrow --lookback",
+        )
+
     build_cost_figures(results, fetches, summary)
 
     # Inventory (non-numeric facts for the deep-dive section)
@@ -767,6 +1024,18 @@ def build_summary(
         inv["billable_infra_hosts_max"] = max(v for _, v in infra_values)
 
 
+def annotate_permission_gaps(summary: SummaryWriter, site: str) -> None:
+    """A wrong --site is the most common cause of broad 403s (keys for another
+    Datadog region are Forbidden on everything). Append that hint to every
+    permission_denied gap's remediation so the report points at it."""
+    hint = (f"if figures are broadly Forbidden, confirm --site={site} matches the org's "
+            "Datadog region (us1/us3/us5/eu1/ap1) — keys for another site 403 on everything")
+    for g in summary._gaps:
+        if g.get("reason") == "permission_denied":
+            base = g.get("remediation")
+            g["remediation"] = f"{base}; {hint}" if base else hint
+
+
 # ── main ─────────────────────────────────────────────────────────────────
 
 
@@ -791,6 +1060,7 @@ def main() -> int:
     results: dict[str, Any] = {}
     fetches: dict[str, FetchResult] = {}
     domain = resolve_site(args.site)
+    lookback_days = parse_duration_days(args.lookback)
 
     if args.report_only:
         results = ev.load_all()
@@ -810,7 +1080,6 @@ def main() -> int:
         headers = datadog_headers(api_key, app_key)
         headers.update(parse_headers(args.header))
         now = datetime.now(UTC)
-        lookback_days = parse_duration_days(args.lookback)
         usage_start = now - timedelta(days=lookback_days)
         with HttpClient(
             f"https://api.{domain}",
@@ -828,6 +1097,7 @@ def main() -> int:
             fetches["estimated_cost"] = fetch_estimated_cost(client, now, ev, results)
             fetches["historical_cost"] = fetch_historical_cost(client, now, ev, results)
             fetches["metrics_list"] = fetch_metrics_list(client, now, ev, results)
+            fetches.update(fetch_estimated_usage(client, now, lookback_days, ev, results))
 
     summary = SummaryWriter(
         collector=COLLECTOR,
@@ -843,7 +1113,8 @@ def main() -> int:
         "detection_method": "site flag / API reachability",
         "site": domain,
     }
-    build_summary(results, fetches, summary)
+    build_summary(results, fetches, summary, lookback_days)
+    annotate_permission_gaps(summary, args.site)
     summary.write(args.output_dir)
     ev.finalize()
     if args.tar:

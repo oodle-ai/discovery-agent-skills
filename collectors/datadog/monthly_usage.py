@@ -213,6 +213,25 @@ def drop_empty_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return [r for r in rows if has_usage(r)]
 
 
+def empty_months(
+    results: dict[str, Any], families: list[str], months: list[str]
+) -> list[str]:
+    """Window months for which NO hourly records were returned at all — the
+    fetch got nothing for that month. This is a collection gap, distinct from a
+    real zero, and must be surfaced so a blank column isn't read as 'no usage'.
+    """
+    present: set[str] = set()
+    for fam in families:
+        data = results.get(f"usage_hourly_{fam}")
+        if not data:
+            continue
+        for entry in data.get("data", []):
+            m = str(entry.get("attributes", {}).get("timestamp", ""))[:7]
+            if m in months:
+                present.add(m)
+    return [m for m in months if m not in present]
+
+
 def _fmt(value: float | None, unit: str, agg: str) -> str:
     if value is None:
         return ""
@@ -268,6 +287,8 @@ def write_summary(
     months: list[str],
     domain: str,
     args_redacted: dict[str, Any],
+    missing_months: list[str] | None = None,
+    partial_windows: int = 0,
 ) -> Path:
     """Emit a summary.json carrying the SKU matrix in `inventory` (no scalar
     figures). report/generate_report.py discovers it via the per-collector
@@ -288,12 +309,30 @@ def write_summary(
     }
     summary.inventory["monthly_usage_months"] = [month_label(m) for m in months]
     summary.inventory["monthly_usage_by_sku"] = inventory_rows(rows, months)
-    summary.inventory["monthly_usage_note"] = (
+    note = (
         "*_bytes SKUs are summed and reported in GB. Host/container gauges use "
         "the p99 of hourly counts (approximates Datadog's spike-excluded "
         "high-water-mark billing); custom metrics use the hourly average; "
         "everything else is summed."
     )
+    # A month the fetch never returned data for is a gap, not zero usage — say so
+    # loudly so a blank column is never read as "no usage".
+    missing = missing_months or []
+    if missing:
+        labels = ", ".join(month_label(m) for m in missing)
+        note += (f" INCOMPLETE: no data was returned for {labels} — blank columns for "
+                 "those months are a collection gap, not zero usage; re-run to backfill.")
+        summary.add_gap(
+            "usage", [], "not_collected",
+            f"hourly usage returned no records for {labels}; those months are "
+            "missing from the matrix (collection gap, not zero usage)",
+            remediation="re-run the export (historical windows time out under load; "
+            "a retry usually backfills them)",
+        )
+    elif partial_windows:
+        note += (f" NOTE: {partial_windows} fetch window(s) failed; some months may "
+                 "undercount — re-run to backfill.")
+    summary.inventory["monthly_usage_note"] = note
     return summary.write(output_dir)
 
 
@@ -354,6 +393,8 @@ def main() -> int:
     all_rows = aggregate_monthly(results, families, months)
     rows = all_rows if args.include_empty else drop_empty_rows(all_rows)
     dropped = len(all_rows) - len(rows)
+    missing = empty_months(results, families, months)
+    partial = len(results.get("hourly_usage_failures") or [])
     csv_path = write_csv(args.output_dir, rows, months)
     summary_path = write_summary(
         args.output_dir, rows, months, domain,
@@ -361,6 +402,8 @@ def main() -> int:
             "site": args.site, "months": args.months,
             "include_empty": args.include_empty,
         },
+        missing_months=missing,
+        partial_windows=partial,
     )
     ev.finalize()
     if args.tar:
@@ -370,6 +413,9 @@ def main() -> int:
     print(f"Wrote {summary_path}  (SKU matrix in inventory.monthly_usage_by_sku)")
     if dropped:
         print(f"Omitted {dropped} all-zero SKU row(s); pass --include-empty to keep them.")
+    if missing:
+        print(f"INCOMPLETE: no data returned for {', '.join(month_label(m) for m in missing)} "
+              "(collection gap, not zero usage); re-run to backfill.")
     if not rows:
         print("No usage rows produced. Check credentials/site, or the account "
               "may have no usage in these product families.")

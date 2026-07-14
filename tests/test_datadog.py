@@ -10,7 +10,7 @@ BASE = "https://api.datadoghq.com"
 
 
 def mock_datadog(respx_mock, estimated_cost_status=200, hourly_pages=1,
-                 historical_available=True):
+                 historical_available=True, query_responses=None):
     respx_mock.get(f"{BASE}/api/v1/hosts/totals").respond(json=fx.HOSTS_TOTALS)
     respx_mock.get(f"{BASE}/api/v1/dashboard").respond(json=fx.DASHBOARDS)
     respx_mock.get(f"{BASE}/api/v1/synthetics/tests").respond(json=fx.SYNTHETICS)
@@ -66,6 +66,18 @@ def mock_datadog(respx_mock, estimated_cost_status=200, hourly_pages=1,
         return httpx.Response(200, json={"data": records[half:]})
 
     respx_mock.get(f"{BASE}/api/v2/usage/hourly_usage").mock(side_effect=hourly_side_effect)
+
+    # datadog.estimated_usage.* / all.cost metric queries — empty by default so
+    # existing tests fall through to the usage-API path; override per-query with
+    # query_responses={<substring>: [<series>]}.
+    def query_side_effect(request: httpx.Request) -> httpx.Response:
+        q = request.url.params.get("query", "")
+        for needle, series in (query_responses or {}).items():
+            if needle in q:
+                return httpx.Response(200, json={"series": series})
+        return httpx.Response(200, json={"series": []})
+
+    respx_mock.get(f"{BASE}/api/v1/query").mock(side_effect=query_side_effect)
 
 
 def run_collector(datadog_collect, tmp_path, monkeypatch, extra_args=None):
@@ -219,3 +231,73 @@ class TestDatadogCollector:
         assert figures_by_id(second)["logs.ingest_gb_per_day"]["value"] == pytest.approx(
             figures_by_id(first)["logs.ingest_gb_per_day"]["value"]
         )
+
+
+class TestEstimatedUsageHelpers:
+    def test_query_points_drops_nulls(self, datadog_collect):
+        pts = datadog_collect.query_points(
+            {"series": [{"pointlist": [[1000, 5.0], [2000, None], [3000, 7.0]]}]}
+        )
+        assert pts == [(1000, 5.0), (3000, 7.0)]
+        assert datadog_collect.query_points(None) == []
+
+    def test_query_span_days(self, datadog_collect):
+        day_ms = 86_400_000
+        assert datadog_collect.query_span_days([(0, 1.0), (day_ms, 1.0)]) == pytest.approx(1.0)
+        assert datadog_collect.query_span_days([(0, 1.0)]) == 1.0  # single point floors to 1
+
+    def test_est_scalar_averages_points(self, datadog_collect):
+        results = {"k": {"series": [{"pointlist": [[1, 10.0], [2, 20.0]]}]}}
+        assert datadog_collect.est_scalar(results, "k") == pytest.approx(15.0)
+        assert datadog_collect.est_scalar({}, "k") is None
+
+    def test_summary_logs_twol_gb_per_day(self, datadog_collect):
+        from datetime import UTC, datetime
+        # 2.8 TB over a 28-day window -> 100 GB/day (Logging without Limits field)
+        summ = {"twol_ingested_events_bytes_agg_sum": 2.8e12}
+        gb = datadog_collect.summary_logs_ingest_gb_per_day(
+            {"usage_summary": summ}, datetime(2026, 7, 1, tzinfo=UTC), 28.0
+        )
+        assert gb == pytest.approx(100.0)
+        # classic-only org (no twol) -> None, so caller falls through
+        assert datadog_collect.summary_logs_ingest_gb_per_day(
+            {"usage_summary": {"usage": []}}, datetime(2026, 7, 1, tzinfo=UTC), 28.0
+        ) is None
+
+
+class TestEstimatedUsagePath:
+    def test_logs_prefers_estimated_usage_over_classic_zero(
+        self, datadog_collect, tmp_path, monkeypatch, respx_mock
+    ):
+        t = 1_700_000_000_000
+        mock_datadog(respx_mock, query_responses={
+            "estimated_usage.logs.ingested_bytes": [
+                {"pointlist": [[t, 1e9], [t + 86_400_000, 2e9]]}  # 3 GB over 1 day
+            ],
+        })
+        summary = run_collector(datadog_collect, tmp_path, monkeypatch)
+        logs = figures_by_id(summary)["logs.ingest_gb_per_day"]
+        assert logs["value"] == pytest.approx(3.0)  # from estimated_usage, not the 24 classic
+        assert "estimated_usage" in logs["method"]
+
+    def test_cost_falls_back_to_all_cost_metric_on_billing_403(
+        self, datadog_collect, tmp_path, monkeypatch, respx_mock
+    ):
+        t = 1_700_000_000_000
+        mock_datadog(respx_mock, estimated_cost_status=403, query_responses={
+            "all.cost": [{"pointlist": [[t, 3000.0], [t + 3_600_000, 2000.0]]}],
+        })
+        summary = run_collector(datadog_collect, tmp_path, monkeypatch)
+        cost = figures_by_id(summary)["cost.monthly_usd"]
+        assert cost["value"] == pytest.approx(5000.0)
+        assert cost["status"] == "estimated"
+        assert "all.cost" in cost["method"]
+
+    def test_permission_denied_gap_gets_site_hint(
+        self, datadog_collect, tmp_path, monkeypatch, respx_mock
+    ):
+        mock_datadog(respx_mock, estimated_cost_status=403)
+        summary = run_collector(datadog_collect, tmp_path, monkeypatch)
+        perm = [g for g in summary["gaps"] if g["reason"] == "permission_denied"]
+        assert perm, "expected a permission_denied gap"
+        assert any("--site=us1" in (g.get("remediation") or "") for g in perm)
