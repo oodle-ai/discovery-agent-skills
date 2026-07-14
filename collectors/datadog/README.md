@@ -62,6 +62,33 @@ Reports the last N *full* calendar months (current partial month excluded).
 for long lookbacks — Datadog serves historical hourly windows at ~15s/week; a
 6-month pull is a couple of minutes.
 
+## Estimated-usage 6-month summary (dashboard-driven)
+
+`estimated_usage_monthly.py` mirrors Datadog's built-in **Estimated Usage
+Overview** dashboard: for each of its summary widgets it queries the underlying
+`datadog.estimated_usage.*` metric per calendar month over the last N months —
+one value per widget per month, exactly what the dashboard (and Plan & Usage
+page) show, trended. This is **not** a per-SKU breakdown; it's the product-level
+numbers, so it sidesteps the SKU export's gauge-vs-count aggregation pitfalls.
+
+```bash
+DD_API_KEY=... DD_APP_KEY=... \
+uv run collectors/datadog/estimated_usage_monthly.py --site us5 --months 6 \
+  --output-dir ./discovery-output/datadog-estimated-usage --tar
+```
+
+| Widget | Metric | Monthly aggregation |
+|---|---|---|
+| Infra / APM hosts, Containers | `estimated_usage.hosts` / `apm_hosts` / `containers` | **max** (peak concurrent) |
+| Custom metrics (+ ingested) | `estimated_usage.metrics.custom[.ingested]` | **avg** (billing basis) |
+| Ingested / Indexed logs | `estimated_usage.logs.ingested_events[{…is_excluded:false}]` | **sum** |
+| Ingested spans (GB) / Indexed spans | `estimated_usage.apm.ingested_bytes` / `apm.indexed_spans` | **sum** |
+
+Reads with metrics/timeseries scope via `/api/v1/query` (no `usage_read`). It
+writes `datadog_estimated_usage_monthly.csv` and a `summary.json` the report
+renders as a metric × month table with a **6-month trend sparkline** per row.
+`--report-only` re-derives from saved evidence.
+
 ## Figure ↔ API mapping (ground truth)
 
 | Figure | Source API | Derivation |
