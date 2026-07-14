@@ -64,7 +64,7 @@ LIST_PRICES = {
 }
 
 EXPECTED = [
-    ExpectedFigure("hosts.count", "Active hosts", "hosts", "hosts"),
+    ExpectedFigure("hosts.count", "Peak hosts", "hosts", "hosts"),
     ExpectedFigure("metrics.total_count", "Active metric names", "metrics", "metrics"),
     ExpectedFigure("metrics.custom_metrics_count", "Custom metrics (avg)", "metrics", "metrics"),
     ExpectedFigure("logs.ingest_gb_per_day", "Log ingestion", "GB/day", "logs"),
@@ -351,7 +351,7 @@ def fetch_metrics_list(
 ESTIMATED_USAGE_QUERIES = {
     "est_logs_ingested_bytes": "sum:datadog.estimated_usage.logs.ingested_bytes{*}.as_count()",
     "est_metrics_custom": "sum:datadog.estimated_usage.metrics.custom{*}",
-    "est_hosts": "sum:datadog.estimated_usage.hosts{*}",
+    "est_hosts": "sum:datadog.estimated_usage.hosts{*}.rollup(max, 3600)",
     "est_all_cost": "sum:all.cost{*}",
 }
 
@@ -844,15 +844,21 @@ def add_est_scalar_figure(
     figure_id: str,
     est_key: str,
     metric_query: str,
+    agg: str = "avg",
 ) -> bool:
-    """Add a figure from an estimated_usage query's average, if present."""
-    v = est_scalar(results, est_key)
-    if v is None:
+    """Add a figure from an estimated_usage query, reduced over time by `agg`
+    ('avg' for billing-average gauges like custom metrics, 'max' for peak counts
+    like hosts). Returns False if the query returned no points."""
+    pts = query_points(results.get(est_key))
+    if not pts:
         return False
+    vals = [v for _, v in pts]
+    value = max(vals) if agg == "max" else sum(vals) / len(vals)
     exp = summary.expected[figure_id]
     summary.add_figure(Figure(
-        id=figure_id, label=exp.label, value=round(v, 2), unit=exp.unit, status="ok",
-        method=f"average of {metric_query} over the window (estimated_usage; metrics scope)",
+        id=figure_id, label=exp.label, value=round(value, 2), unit=exp.unit, status="ok",
+        method=f"{'max' if agg == 'max' else 'time-average'} of {metric_query} over the "
+        "window (estimated_usage; metrics scope)",
         source_api=f"GET /api/v1/query?query={metric_query}",
         evidence_files=[f"evidence/{est_key}.json"],
     ))
@@ -865,34 +871,37 @@ def build_summary(
     summary: SummaryWriter,
     lookback_days: float = 30.0,
 ) -> None:
-    # hosts.count — real-time active hosts
-    hosts = results.get("hosts_totals")
-    if hosts and hosts.get("total_active") is not None:
-        summary.add_figure(
-            Figure(
-                id="hosts.count",
-                label="Active hosts",
-                value=float(hosts["total_active"]),
-                unit="hosts",
-                status="ok",
-                method="hosts/totals total_active (hosts seen in the last ~2h)",
-                source_api="GET /api/v1/hosts/totals",
-                evidence_files=["evidence/hosts_totals.json"],
-                notes=f"total_up={hosts.get('total_up')}",
-            )
-        )
-    elif add_est_scalar_figure(
+    # hosts.count — peak (max) hosts over the window. estimated_usage.hosts with
+    # an hourly-max rollup is primary so the report shows the maximum; hosts/totals
+    # (real-time active snapshot) is the fallback when the metric isn't readable.
+    if add_est_scalar_figure(
         summary, results, "hosts.count", "est_hosts",
-        "sum:datadog.estimated_usage.hosts{*}",
+        "sum:datadog.estimated_usage.hosts{*}.rollup(max, 3600)", agg="max",
     ):
-        pass  # hosts/totals unavailable; estimated_usage covered it
+        pass  # peak hosts from estimated_usage
     else:
-        res = fetches.get("hosts_totals")
-        summary.mark_unavailable(
-            "hosts.count",
-            res.gap_reason if res and res.gap_reason else "api_error",
-            res.error if res and res.error else "hosts/totals returned no data",
-        )
+        hosts = results.get("hosts_totals")
+        if hosts and hosts.get("total_active") is not None:
+            summary.add_figure(
+                Figure(
+                    id="hosts.count",
+                    label="Active hosts",
+                    value=float(hosts["total_active"]),
+                    unit="hosts",
+                    status="ok",
+                    method="hosts/totals total_active (hosts seen in the last ~2h)",
+                    source_api="GET /api/v1/hosts/totals",
+                    evidence_files=["evidence/hosts_totals.json"],
+                    notes=f"total_up={hosts.get('total_up')}",
+                )
+            )
+        else:
+            res = fetches.get("hosts_totals")
+            summary.mark_unavailable(
+                "hosts.count",
+                res.gap_reason if res and res.gap_reason else "api_error",
+                res.error if res and res.error else "hosts/totals returned no data",
+            )
 
     # metrics.total_count — active metric names over the trailing 2h
     metrics_list = results.get("metrics_list")

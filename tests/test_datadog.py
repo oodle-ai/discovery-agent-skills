@@ -302,6 +302,26 @@ class TestEstimatedUsagePath:
         assert perm, "expected a permission_denied gap"
         assert any("--site=us1" in (g.get("remediation") or "") for g in perm)
 
+    def test_hosts_reports_max_from_estimated_usage(
+        self, datadog_collect, tmp_path, monkeypatch, respx_mock
+    ):
+        # estimated_usage.hosts is primary and reduced by max -> peak, not average,
+        # and not the hosts/totals fixture value (142)
+        mock_datadog(respx_mock, query_responses={
+            "estimated_usage.hosts": [{"pointlist": [[1, 50.0], [2, 80.0], [3, 65.0]]}],
+        })
+        summary = run_collector(datadog_collect, tmp_path, monkeypatch)
+        h = figures_by_id(summary)["hosts.count"]
+        assert h["value"] == pytest.approx(80.0)  # max(50,80,65), not avg 65, not 142
+        assert "max" in h["method"]
+
+    def test_hosts_falls_back_to_totals_when_no_metric(
+        self, datadog_collect, tmp_path, monkeypatch, respx_mock
+    ):
+        mock_datadog(respx_mock)  # estimated_usage empty -> hosts/totals fallback
+        summary = run_collector(datadog_collect, tmp_path, monkeypatch)
+        assert figures_by_id(summary)["hosts.count"]["value"] == 142
+
     def test_custom_metrics_prefers_estimated_usage_over_hourly(
         self, datadog_collect, tmp_path, monkeypatch, respx_mock
     ):

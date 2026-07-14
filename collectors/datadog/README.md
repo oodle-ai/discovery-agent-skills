@@ -66,7 +66,7 @@ for long lookbacks — Datadog serves historical hourly windows at ~15s/week; a
 
 | Figure | Source API | Derivation |
 |---|---|---|
-| `hosts.count` | `GET /api/v1/hosts/totals` | `total_active` (hosts seen in ~2h) |
+| `hosts.count` | `datadog.estimated_usage.hosts` (hourly max), else `GET /api/v1/hosts/totals` | **max concurrent hosts** over the window (peak, `max` of `.rollup(max, 3600)`); falls back to `hosts/totals` `total_active` (real-time active snapshot) |
 | `metrics.total_count` | `GET /api/v1/metrics?from=<2h ago>` | count of active metric names |
 | `metrics.custom_metrics_count` | `datadog.estimated_usage.metrics.custom`, else hourly `timeseries` `num_custom_timeseries` | time-average of `sum:datadog.estimated_usage.metrics.custom{*}` (the Usage & Cost dashboard source); falls back to the classic hourly `num_custom_timeseries` |
 | `logs.ingest_gb_per_day` | `datadog.estimated_usage.logs.ingested_bytes` → usage/summary `twol_*` → hourly `ingested_events_bytes` | **preference order.** The estimated_usage metric (via `/api/v1/query`, metrics scope) and the usage-summary `twol_ingested_events_bytes` both count **Logging without Limits**; classic `ingested_events_bytes` is **0** for LwL orgs, so it is the last resort |
