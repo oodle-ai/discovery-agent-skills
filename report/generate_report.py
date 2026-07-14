@@ -359,6 +359,17 @@ MONTHLY_USAGE_KEYS = ("monthly_usage_by_sku", "monthly_usage_months", "monthly_u
 _MONTHLY_META_COLS = ("product_family", "usage_type", "unit", "aggregation")
 
 
+def _month_num(cell: str | None) -> float | None:
+    """Parse a formatted month cell back to a number for the trend sparkline."""
+    s = (cell or "").replace(",", "").strip()
+    if not s:
+        return None
+    try:
+        return float(s)
+    except ValueError:
+        return None
+
+
 def monthly_usage_section(summaries: list[dict]) -> str:
     """Render inventory.monthly_usage_by_sku (from a monthly_usage.py export) as
     a per-SKU × month table. Values are shown verbatim — the generator never
@@ -376,7 +387,7 @@ def monthly_usage_section(summaries: list[dict]) -> str:
         months = inv.get("monthly_usage_months") or [
             k for k in sku_rows[0] if k not in _MONTHLY_META_COLS
         ]
-        headers = ["Product", "Usage type (SKU)", "Unit", "Agg"] + list(months)
+        headers = ["Product", "Usage type (SKU)", "Unit", "Agg"] + list(months) + ["6-mo trend"]
         rows = [
             [
                 T.esc(r.get("product_family", "")),
@@ -385,6 +396,7 @@ def monthly_usage_section(summaries: list[dict]) -> str:
                 T.esc(r.get("aggregation", "")),
             ]
             + [T.esc(r.get(m, "")) for m in months]
+            + [T.sparkline([_month_num(r.get(m)) for m in months])]
             for r in sku_rows
         ]
         if len(summaries) > 1:

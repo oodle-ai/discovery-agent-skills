@@ -33,6 +33,14 @@ def datadog_monthly():
 
 
 @pytest.fixture(scope="session")
+def datadog_est_monthly():
+    return load_module(
+        "datadog_est_monthly",
+        REPO_ROOT / "collectors" / "datadog" / "estimated_usage_monthly.py",
+    )
+
+
+@pytest.fixture(scope="session")
 def cloudwatch_collect():
     return load_module(
         "cloudwatch_collect", REPO_ROOT / "collectors" / "cloudwatch" / "collect.py"

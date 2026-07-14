@@ -123,6 +123,7 @@ CSS = """
                    font-size: 0.75rem; vertical-align: top; }
   .provenance td:nth-child(1), .provenance td:nth-child(2) { white-space: nowrap; }
   .table-wrap { overflow-x: auto; }
+  svg.spark { color: var(--accent); vertical-align: middle; display: block; }
   .muted { color: var(--text-muted); font-size: 0.85rem; }
   code { background: #f1f5f9; padding: 0.1rem 0.3rem; border-radius: 4px;
          font-size: 0.85em; overflow-wrap: anywhere; }
@@ -203,6 +204,33 @@ def table(headers: list[str], rows: list[list[str]], css_class: str = "") -> str
     return (
         f'<div class="table-wrap"><table{cls}><thead><tr>{head}</tr></thead>'
         f"<tbody>\n{body}\n</tbody></table></div>"
+    )
+
+
+def sparkline(values: list[float | None], width: int = 96, height: int = 22) -> str:
+    """Inline SVG trend line for a small numeric series (None = missing month).
+    Normalized to its own min/max, so series of any scale are comparable in
+    shape. Returns '' when there are fewer than 2 numeric points to plot."""
+    nums = [v for v in values if v is not None]
+    if len(nums) < 2:
+        return ""
+    lo, hi = min(nums), max(nums)
+    span = (hi - lo) or 1.0
+    n = len(values)
+    step = width / (n - 1) if n > 1 else float(width)
+    pts = [
+        (i * step, height - (v - lo) / span * (height - 4) - 2)
+        for i, v in enumerate(values) if v is not None
+    ]
+    if len(pts) < 2:
+        return ""
+    path = " ".join(f"{'M' if k == 0 else 'L'}{x:.1f},{y:.1f}" for k, (x, y) in enumerate(pts))
+    dots = "".join(f'<circle cx="{x:.1f}" cy="{y:.1f}" r="1.5"/>' for x, y in pts)
+    return (
+        f'<svg class="spark" width="{width}" height="{height}" '
+        f'viewBox="0 0 {width} {height}" preserveAspectRatio="none" aria-hidden="true">'
+        f'<path d="{path}" fill="none" stroke="currentColor" stroke-width="1.5"/>'
+        f'<g fill="currentColor">{dots}</g></svg>'
     )
 
 

@@ -151,6 +151,17 @@ class TestMonthlyUsageSection:
         html = report_gen.build_report([s], context, "Test Report")
         assert "Retention caveat: only ~6 weeks retained." in html
 
+    def test_six_month_trend_sparkline_rendered(self, report_gen, context):
+        html = report_gen.build_report([self._monthly_summary()], context, "Test Report")
+        assert "6-mo trend" in html
+        assert 'class="spark"' in html  # inline SVG trend line present
+
+    def test_month_num_parses_and_ignores_blanks(self, report_gen):
+        assert report_gen._month_num("3,000") == 3000.0
+        assert report_gen._month_num("2.500") == 2.5
+        assert report_gen._month_num("") is None
+        assert report_gen._month_num(None) is None
+
 
 class TestMainCli:
     def test_end_to_end_strict(self, report_gen, tmp_path, monkeypatch, capsys):

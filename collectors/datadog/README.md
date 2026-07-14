@@ -62,25 +62,68 @@ Reports the last N *full* calendar months (current partial month excluded).
 for long lookbacks — Datadog serves historical hourly windows at ~15s/week; a
 6-month pull is a couple of minutes.
 
+## Estimated-usage 6-month summary (dashboard-driven)
+
+`estimated_usage_monthly.py` mirrors Datadog's built-in **Estimated Usage
+Overview** dashboard: for each of its summary widgets it queries the underlying
+`datadog.estimated_usage.*` metric per calendar month over the last N months —
+one value per widget per month, exactly what the dashboard (and Plan & Usage
+page) show, trended. This is **not** a per-SKU breakdown; it's the product-level
+numbers, so it sidesteps the SKU export's gauge-vs-count aggregation pitfalls.
+
+```bash
+DD_API_KEY=... DD_APP_KEY=... \
+uv run collectors/datadog/estimated_usage_monthly.py --site us5 --months 6 \
+  --output-dir ./discovery-output/datadog-estimated-usage --tar
+```
+
+| Widget | Metric | Monthly aggregation |
+|---|---|---|
+| Infra / APM hosts, Containers | `estimated_usage.hosts` / `apm_hosts` / `containers` | **max** (peak concurrent) |
+| Custom metrics (+ ingested) | `estimated_usage.metrics.custom[.ingested]` | **avg** (billing basis) |
+| Ingested / Indexed logs (events) | `estimated_usage.logs.ingested_events[{…is_excluded:false}]` | **sum** |
+| Ingested log volume (GB) | `estimated_usage.logs.ingested_bytes` | **sum** |
+| Ingested spans (GB) / Indexed spans | `estimated_usage.apm.ingested_bytes` / `apm.indexed_spans` | **sum** |
+
+Reads with metrics/timeseries scope via `/api/v1/query` (no `usage_read`). It
+writes `datadog_estimated_usage_monthly.csv` and a `summary.json` the report
+renders as a metric × month table with a **6-month trend sparkline** per row.
+`--report-only` re-derives from saved evidence.
+
 ## Figure ↔ API mapping (ground truth)
 
 | Figure | Source API | Derivation |
 |---|---|---|
-| `hosts.count` | `GET /api/v1/hosts/totals` | `total_active` (hosts seen in ~2h) |
+| `hosts.count` | `datadog.estimated_usage.hosts` (hourly max), else `GET /api/v1/hosts/totals` | **max concurrent hosts** over the window (peak, `max` of `.rollup(max, 3600)`); falls back to `hosts/totals` `total_active` (real-time active snapshot) |
 | `metrics.total_count` | `GET /api/v1/metrics?from=<2h ago>` | count of active metric names |
-| `metrics.custom_metrics_count` | `GET /api/v2/usage/hourly_usage` family `timeseries` | average of hourly `num_custom_timeseries` over lookback |
-| `logs.ingest_gb_per_day` | hourly usage family `logs` | sum of hourly `ingested_events_bytes` / days covered / 1e9 |
-| `datadog.logs_indexed_events_per_day` | hourly usage family `logs` | sum of hourly `indexed_events_count` / days covered |
-| `traces.ingest_gb_per_day` | hourly usage family `ingested_spans` | sum of hourly `ingested_events_bytes` / days covered / 1e9 |
-| `datadog.rum_sessions_per_day` | hourly usage family `rum` | sum of hourly `rum_total_session_count` / days covered |
+| `metrics.custom_metrics_count` | `datadog.estimated_usage.metrics.custom`, else hourly `timeseries` `num_custom_timeseries` | time-average of `sum:datadog.estimated_usage.metrics.custom{*}` (the Usage & Cost dashboard source); falls back to the classic hourly `num_custom_timeseries` |
+| `logs.ingest_gb_per_day` | `datadog.estimated_usage.logs.ingested_bytes` → usage/summary `twol_*` → hourly `ingested_events_bytes` | **preference order.** The estimated_usage metric (via `/api/v1/query`, metrics scope) and the usage-summary `twol_ingested_events_bytes` both count **Logging without Limits**; classic `ingested_events_bytes` is **0** for LwL orgs, so it is the last resort |
+| `datadog.logs_indexed_events_per_day` | `datadog.estimated_usage.logs.ingested_events{datadog_is_excluded:false}`, else hourly `logs` `indexed_events_count` | sum over window / days covered (indexed = non-excluded events) |
+| `traces.ingest_gb_per_day` | `datadog.estimated_usage.apm.ingested_bytes`, else hourly `ingested_spans` `ingested_events_bytes` | sum over window / days / 1e9 |
+| `datadog.rum_sessions_per_day` | `datadog.estimated_usage.rum.ingested_sessions`, else hourly `rum` `rum_total_session_count` | sum over window / days |
 | `alerts.monitor_count` | `GET /api/v1/monitor` (paginated) | count |
-| `cost.monthly_usd` | `GET /api/v2/usage/historical_cost?view=summary` | last full month's billed `total_cost` (most stable monthly number); falls back to a linear projection of month-to-date (`estimated`), then to usage × public list prices (`estimated`, see below) |
+| `cost.monthly_usd` | `GET /api/v2/usage/historical_cost?view=summary` | last full month's billed `total_cost` (most stable); falls back to a projection of month-to-date, then the `all.cost` metric (metrics scope, dodges `billing_read`), then usage × public list prices (all `estimated`) |
 | `datadog.cost_month_to_date_usd` | `GET /api/v2/usage/estimated_cost?view=summary` | current month `total_cost` (estimated_cost only serves the current month; past months come from historical_cost) |
 | `datadog.cost_projected_month_usd` | derived | month-to-date / days elapsed × days in month (`estimated`) |
 
 Inventory (deep-dive section): dashboards, notebooks, SLOs, synthetics by
 type, monitors by type, log indexes with retention/daily limits, log pipeline
 count, billable infra hosts (avg/max from hourly usage).
+
+### estimated_usage metrics & Logging without Limits
+
+The collector also queries the `datadog.estimated_usage.*` metric namespace via
+`GET /api/v1/query` (the same source Datadog's own Usage & Cost dashboards use).
+These read with **metrics/timeseries scope** — no `usage_read`/`billing_read` —
+and, critically, count **Logging without Limits** ("twol") ingestion. Classic
+`ingested_events_bytes` is `0` for Logging-without-Limits orgs (most modern
+Datadog log setups), so without this path `logs.ingest_gb_per_day` silently
+reads zero for orgs that ingest heavily. `all.cost` provides a measured cost
+when the billing API returns 403.
+
+If figures are broadly `permission_denied`, the most common cause is a
+`--site` that doesn't match the org's Datadog region (keys for another site are
+Forbidden on everything); the report's remediation now calls this out.
 
 ## Audit notes vs the original oodlectl script
 
