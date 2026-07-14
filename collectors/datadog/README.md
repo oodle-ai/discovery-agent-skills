@@ -81,7 +81,8 @@ uv run collectors/datadog/estimated_usage_monthly.py --site us5 --months 6 \
 |---|---|---|
 | Infra / APM hosts, Containers | `estimated_usage.hosts` / `apm_hosts` / `containers` | **max** (peak concurrent) |
 | Custom metrics (+ ingested) | `estimated_usage.metrics.custom[.ingested]` | **avg** (billing basis) |
-| Ingested / Indexed logs | `estimated_usage.logs.ingested_events[{…is_excluded:false}]` | **sum** |
+| Ingested / Indexed logs (events) | `estimated_usage.logs.ingested_events[{…is_excluded:false}]` | **sum** |
+| Ingested log volume (GB) | `estimated_usage.logs.ingested_bytes` | **sum** |
 | Ingested spans (GB) / Indexed spans | `estimated_usage.apm.ingested_bytes` / `apm.indexed_spans` | **sum** |
 
 Reads with metrics/timeseries scope via `/api/v1/query` (no `usage_read`). It

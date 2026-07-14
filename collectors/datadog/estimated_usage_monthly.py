@@ -76,6 +76,8 @@ METRICS = [
      "query": "sum:datadog.estimated_usage.metrics.custom.ingested{*}"},
     {"key": "logs_ingested", "label": "Ingested logs", "unit": "events", "agg": "sum",
      "query": "sum:datadog.estimated_usage.logs.ingested_events{*}.as_count()"},
+    {"key": "logs_ingested_bytes", "label": "Ingested log volume", "unit": "GB", "agg": "sum",
+     "query": "sum:datadog.estimated_usage.logs.ingested_bytes{*}.as_count()"},
     {"key": "logs_indexed", "label": "Indexed logs", "unit": "events", "agg": "sum",
      "query": "sum:datadog.estimated_usage.logs.ingested_events"
               "{datadog_index:*,datadog_is_excluded:false}.as_count()"},
