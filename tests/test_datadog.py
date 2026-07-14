@@ -301,3 +301,16 @@ class TestEstimatedUsagePath:
         perm = [g for g in summary["gaps"] if g["reason"] == "permission_denied"]
         assert perm, "expected a permission_denied gap"
         assert any("--site=us1" in (g.get("remediation") or "") for g in perm)
+
+    def test_custom_metrics_prefers_estimated_usage_over_hourly(
+        self, datadog_collect, tmp_path, monkeypatch, respx_mock
+    ):
+        # hourly num_custom_timeseries is present in the fixture, but estimated_usage
+        # is primary, so the figure must come from the metric query (avg 100,300=200)
+        mock_datadog(respx_mock, query_responses={
+            "estimated_usage.metrics.custom": [{"pointlist": [[1, 100.0], [2, 300.0]]}],
+        })
+        summary = run_collector(datadog_collect, tmp_path, monkeypatch)
+        cm = figures_by_id(summary)["metrics.custom_metrics_count"]
+        assert cm["value"] == pytest.approx(200.0)
+        assert "estimated_usage" in cm["method"]

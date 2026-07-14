@@ -345,11 +345,14 @@ def fetch_metrics_list(
 # classic hourly-usage product families — count Logging without Limits ("twol")
 # ingestion, so they surface volume the usage APIs report as 0. Queried as scalar
 # timeseries via /api/v1/query.
+# Aggregators match Datadog's own Usage & Cost dashboards: sum: across {*} so
+# multi-series metrics (per index/tag) total rather than average. Time-shaping is
+# done in the derivation (sum for count metrics, time-average for gauges).
 ESTIMATED_USAGE_QUERIES = {
     "est_logs_ingested_bytes": "sum:datadog.estimated_usage.logs.ingested_bytes{*}.as_count()",
-    "est_metrics_custom": "avg:datadog.estimated_usage.metrics.custom{*}",
-    "est_hosts": "avg:datadog.estimated_usage.hosts{*}",
-    "est_all_cost": "sum:all.cost{*}.as_count()",
+    "est_metrics_custom": "sum:datadog.estimated_usage.metrics.custom{*}",
+    "est_hosts": "sum:datadog.estimated_usage.hosts{*}",
+    "est_all_cost": "sum:all.cost{*}",
 }
 
 
@@ -791,7 +794,7 @@ def build_cost_figures(
             value=round(total_all_cost, 2), unit="USD", status="estimated",
             method="sum of all.cost over the current month (Datadog's own cost metric; "
             "readable with metrics scope when the billing API is not)",
-            source_api="GET /api/v1/query?query=sum:all.cost{*}.as_count()",
+            source_api="GET /api/v1/query?query=sum:all.cost{*}",
             evidence_files=["evidence/est_all_cost.json"],
             notes=f"estimated_cost API unavailable ({reason}): {api_err}",
         ))
@@ -880,7 +883,7 @@ def build_summary(
         )
     elif add_est_scalar_figure(
         summary, results, "hosts.count", "est_hosts",
-        "avg:datadog.estimated_usage.hosts{*}",
+        "sum:datadog.estimated_usage.hosts{*}",
     ):
         pass  # hosts/totals unavailable; estimated_usage covered it
     else:
@@ -914,17 +917,12 @@ def build_summary(
             res.error if res and res.error else "metrics list returned no data",
         )
 
-    # Usage-derived figures (each records its own gap when missing)
-    if hourly_values(results.get("usage_hourly_timeseries"), "num_custom_timeseries"):
-        add_hourly_figure(
-            summary, results, fetches,
-            "metrics.custom_metrics_count", "timeseries", "num_custom_timeseries", "avg",
-            remediation="custom metrics usage requires the timeseries product family; "
-            "verify the app key has usage_read",
-        )
-    elif not add_est_scalar_figure(
+    # Usage-derived figures (each records its own gap when missing).
+    # estimated_usage.metrics.custom is primary (the Usage & Cost dashboard source);
+    # the classic hourly num_custom_timeseries is the fallback.
+    if not add_est_scalar_figure(
         summary, results, "metrics.custom_metrics_count", "est_metrics_custom",
-        "avg:datadog.estimated_usage.metrics.custom{*}",
+        "sum:datadog.estimated_usage.metrics.custom{*}",
     ):
         add_hourly_figure(
             summary, results, fetches,
