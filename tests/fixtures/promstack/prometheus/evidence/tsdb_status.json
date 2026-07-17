@@ -1,0 +1,180 @@
+{
+  "status": "success",
+  "data": {
+    "headStats": {
+      "numSeries": 2077,
+      "numLabelPairs": 977,
+      "chunkCount": 2077,
+      "minTime": 1782126939576,
+      "maxTime": 1782127014580
+    },
+    "seriesCountByMetricName": [
+      {
+        "name": "node_nfs_requests_total",
+        "value": 99
+      },
+      {
+        "name": "node_cpu_seconds_total",
+        "value": 96
+      },
+      {
+        "name": "node_nfsd_requests_total",
+        "value": 74
+      },
+      {
+        "name": "prometheus_http_requests_total",
+        "value": 51
+      },
+      {
+        "name": "node_scrape_collector_duration_seconds",
+        "value": 46
+      },
+      {
+        "name": "node_scrape_collector_success",
+        "value": 46
+      },
+      {
+        "name": "node_cpu_guest_seconds_total",
+        "value": 24
+      },
+      {
+        "name": "prometheus_http_request_duration_seconds_bucket",
+        "value": 20
+      },
+      {
+        "name": "node_disk_read_time_seconds_total",
+        "value": 18
+      },
+      {
+        "name": "node_disk_io_time_weighted_seconds_total",
+        "value": 18
+      }
+    ],
+    "labelValueCountByLabelName": [
+      {
+        "name": "__name__",
+        "value": 545
+      },
+      {
+        "name": "method",
+        "value": 82
+      },
+      {
+        "name": "le",
+        "value": 79
+      },
+      {
+        "name": "handler",
+        "value": 51
+      },
+      {
+        "name": "collector",
+        "value": 46
+      },
+      {
+        "name": "device",
+        "value": 31
+      },
+      {
+        "name": "minor",
+        "value": 17
+      },
+      {
+        "name": "cpu",
+        "value": 12
+      },
+      {
+        "name": "quantile",
+        "value": 9
+      },
+      {
+        "name": "mode",
+        "value": 8
+      }
+    ],
+    "memoryInBytesByLabelName": [
+      {
+        "name": "__name__",
+        "value": 62868
+      },
+      {
+        "name": "instance",
+        "value": 33820
+      },
+      {
+        "name": "job",
+        "value": 24361
+      },
+      {
+        "name": "device",
+        "value": 3569
+      },
+      {
+        "name": "le",
+        "value": 1673
+      },
+      {
+        "name": "method",
+        "value": 1257
+      },
+      {
+        "name": "handler",
+        "value": 1157
+      },
+      {
+        "name": "collector",
+        "value": 598
+      },
+      {
+        "name": "mode",
+        "value": 564
+      },
+      {
+        "name": "scrape_job",
+        "value": 322
+      }
+    ],
+    "seriesCountByLabelValuePair": [
+      {
+        "name": "instance=node-exporter:9100",
+        "value": 1427
+      },
+      {
+        "name": "job=node-exporter",
+        "value": 1427
+      },
+      {
+        "name": "instance=localhost:9090",
+        "value": 581
+      },
+      {
+        "name": "job=prometheus",
+        "value": 581
+      },
+      {
+        "name": "__name__=node_nfs_requests_total",
+        "value": 99
+      },
+      {
+        "name": "__name__=node_cpu_seconds_total",
+        "value": 96
+      },
+      {
+        "name": "proto=4",
+        "value": 95
+      },
+      {
+        "name": "__name__=node_nfsd_requests_total",
+        "value": 74
+      },
+      {
+        "name": "code=200",
+        "value": 53
+      },
+      {
+        "name": "__name__=prometheus_http_requests_total",
+        "value": 51
+      }
+    ]
+  }
+}

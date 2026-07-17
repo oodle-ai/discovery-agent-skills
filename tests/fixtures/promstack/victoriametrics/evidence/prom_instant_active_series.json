@@ -1,0 +1,36 @@
+{
+  "status": "success",
+  "data": {
+    "resultType": "vector",
+    "result": [
+      {
+        "metric": {
+          "__name__": "vm_cache_entries",
+          "instance": "self",
+          "job": "victoria-metrics",
+          "type": "storage/hour_metric_ids"
+        },
+        "value": [
+          1782127338,
+          "3906"
+        ]
+      },
+      {
+        "metric": {
+          "__name__": "vm_cache_entries",
+          "instance": "victoriametrics:8428",
+          "job": "victoriametrics",
+          "type": "storage/hour_metric_ids"
+        },
+        "value": [
+          1782127338,
+          "3908"
+        ]
+      }
+    ]
+  },
+  "stats": {
+    "seriesFetched": "2",
+    "executionTimeMsec": 3
+  }
+}

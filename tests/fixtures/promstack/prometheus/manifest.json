@@ -1,0 +1,38 @@
+[
+  {
+    "name": "buildinfo",
+    "file": "evidence/buildinfo.json",
+    "source_api": "GET /api/v1/status/buildinfo",
+    "written_at": "2026-06-22T11:16:53Z"
+  },
+  {
+    "name": "probe_prometheus",
+    "file": "evidence/probe_prometheus.json",
+    "source_api": "GET /api/v1/query?query=prometheus_build_info",
+    "written_at": "2026-06-22T11:16:54Z"
+  },
+  {
+    "name": "tsdb_status",
+    "file": "evidence/tsdb_status.json",
+    "source_api": "GET /api/v1/status/tsdb",
+    "written_at": "2026-06-22T11:16:54Z"
+  },
+  {
+    "name": "status_flags",
+    "file": "evidence/status_flags.json",
+    "source_api": "GET /api/v1/status/flags",
+    "written_at": "2026-06-22T11:16:54Z"
+  },
+  {
+    "name": "prom_instant_samples_rate",
+    "file": "evidence/prom_instant_samples_rate.json",
+    "source_api": "GET /api/v1/query?query=sum(rate(prometheus_tsdb_head_samples_appended_total[5m]))",
+    "written_at": "2026-06-22T11:16:54Z"
+  },
+  {
+    "name": "prom_instant_scrape_targets",
+    "file": "evidence/prom_instant_scrape_targets.json",
+    "source_api": "GET /api/v1/query?query=count(up)",
+    "written_at": "2026-06-22T11:16:55Z"
+  }
+]

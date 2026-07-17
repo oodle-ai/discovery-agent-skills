@@ -1,0 +1,180 @@
+{
+  "status": "success",
+  "data": {
+    "headStats": {
+      "numSeries": 1099,
+      "numLabelPairs": 669,
+      "chunkCount": 1099,
+      "minTime": 1782127892892,
+      "maxTime": 1782127968376
+    },
+    "seriesCountByMetricName": [
+      {
+        "name": "tempo_request_duration_seconds_bucket",
+        "value": 75
+      },
+      {
+        "name": "prometheus_http_requests_total",
+        "value": 51
+      },
+      {
+        "name": "tempo_kv_request_duration_seconds_bucket",
+        "value": 48
+      },
+      {
+        "name": "tempo_response_message_bytes_bucket",
+        "value": 45
+      },
+      {
+        "name": "tempo_request_message_bytes_bucket",
+        "value": 45
+      },
+      {
+        "name": "prometheus_sd_kubernetes_events_total",
+        "value": 18
+      },
+      {
+        "name": "prometheus_tsdb_compaction_duration_seconds_bucket",
+        "value": 15
+      },
+      {
+        "name": "prometheus_tsdb_compaction_chunk_samples_bucket",
+        "value": 13
+      },
+      {
+        "name": "prometheus_tsdb_compaction_chunk_size_bytes_bucket",
+        "value": 13
+      },
+      {
+        "name": "tempo_query_frontend_queue_duration_seconds_bucket",
+        "value": 12
+      }
+    ],
+    "labelValueCountByLabelName": [
+      {
+        "name": "__name__",
+        "value": 372
+      },
+      {
+        "name": "le",
+        "value": 129
+      },
+      {
+        "name": "handler",
+        "value": 51
+      },
+      {
+        "name": "quantile",
+        "value": 11
+      },
+      {
+        "name": "limit_name",
+        "value": 9
+      },
+      {
+        "name": "reason",
+        "value": 7
+      },
+      {
+        "name": "state",
+        "value": 7
+      },
+      {
+        "name": "role",
+        "value": 7
+      },
+      {
+        "name": "route",
+        "value": 5
+      },
+      {
+        "name": "name",
+        "value": 5
+      }
+    ],
+    "memoryInBytesByLabelName": [
+      {
+        "name": "__name__",
+        "value": 41059
+      },
+      {
+        "name": "instance",
+        "value": 13222
+      },
+      {
+        "name": "job",
+        "value": 8285
+      },
+      {
+        "name": "le",
+        "value": 3500
+      },
+      {
+        "name": "route",
+        "value": 3363
+      },
+      {
+        "name": "kv_name",
+        "value": 1330
+      },
+      {
+        "name": "handler",
+        "value": 973
+      },
+      {
+        "name": "method",
+        "value": 703
+      },
+      {
+        "name": "status_code",
+        "value": 601
+      },
+      {
+        "name": "role",
+        "value": 521
+      }
+    ],
+    "seriesCountByLabelValuePair": [
+      {
+        "name": "instance=localhost:9090",
+        "value": 558
+      },
+      {
+        "name": "job=prometheus",
+        "value": 558
+      },
+      {
+        "name": "job=tempo",
+        "value": 541
+      },
+      {
+        "name": "instance=tempo:3200",
+        "value": 541
+      },
+      {
+        "name": "status_code=200",
+        "value": 104
+      },
+      {
+        "name": "method=gRPC",
+        "value": 103
+      },
+      {
+        "name": "method=GET",
+        "value": 97
+      },
+      {
+        "name": "ws=false",
+        "value": 85
+      },
+      {
+        "name": "__name__=tempo_request_duration_seconds_bucket",
+        "value": 75
+      },
+      {
+        "name": "route=ready",
+        "value": 57
+      }
+    ]
+  }
+}

@@ -1,0 +1,176 @@
+{
+  "status": "success",
+  "data": {
+    "totalSeries": 3911,
+    "totalLabelValuePairs": 16587,
+    "seriesCountByMetricName": [
+      {
+        "name": "flag",
+        "value": 448
+      },
+      {
+        "name": "vm_http_requests_total",
+        "value": 154
+      },
+      {
+        "name": "node_nfs_requests_total",
+        "value": 99
+      },
+      {
+        "name": "node_cpu_seconds_total",
+        "value": 96
+      },
+      {
+        "name": "vm_http_request_errors_total",
+        "value": 92
+      },
+      {
+        "name": "node_nfsd_requests_total",
+        "value": 74
+      },
+      {
+        "name": "go_gc_pauses_seconds_bucket",
+        "value": 70
+      },
+      {
+        "name": "go_sched_latencies_seconds_bucket",
+        "value": 70
+      },
+      {
+        "name": "vminsert_request_duration_seconds_bucket",
+        "value": 52
+      },
+      {
+        "name": "prometheus_http_requests_total",
+        "value": 51
+      }
+    ],
+    "seriesCountByLabelName": [
+      {
+        "name": "__name__",
+        "value": 3911
+      },
+      {
+        "name": "instance",
+        "value": 3911
+      },
+      {
+        "name": "job",
+        "value": 3911
+      },
+      {
+        "name": "device",
+        "value": 707
+      },
+      {
+        "name": "name",
+        "value": 513
+      },
+      {
+        "name": "type",
+        "value": 455
+      },
+      {
+        "name": "is_set",
+        "value": 448
+      },
+      {
+        "name": "value",
+        "value": 388
+      },
+      {
+        "name": "path",
+        "value": 300
+      },
+      {
+        "name": "le",
+        "value": 284
+      }
+    ],
+    "seriesCountByFocusLabelValue": [],
+    "seriesCountByLabelValuePair": [
+      {
+        "name": "instance=node-exporter:9100",
+        "value": 1427
+      },
+      {
+        "name": "job=node-exporter",
+        "value": 1427
+      },
+      {
+        "name": "instance=victoriametrics:8428",
+        "value": 944
+      },
+      {
+        "name": "job=victoriametrics",
+        "value": 944
+      },
+      {
+        "name": "instance=self",
+        "value": 939
+      },
+      {
+        "name": "job=victoria-metrics",
+        "value": 939
+      },
+      {
+        "name": "instance=localhost:9090",
+        "value": 601
+      },
+      {
+        "name": "job=prometheus",
+        "value": 601
+      },
+      {
+        "name": "__name__=flag",
+        "value": 448
+      },
+      {
+        "name": "is_set=false",
+        "value": 444
+      }
+    ],
+    "labelValueCountByLabelName": [
+      {
+        "name": "__name__",
+        "value": 798
+      },
+      {
+        "name": "name",
+        "value": 229
+      },
+      {
+        "name": "le",
+        "value": 120
+      },
+      {
+        "name": "method",
+        "value": 82
+      },
+      {
+        "name": "path",
+        "value": 79
+      },
+      {
+        "name": "value",
+        "value": 56
+      },
+      {
+        "name": "vmrange",
+        "value": 54
+      },
+      {
+        "name": "handler",
+        "value": 51
+      },
+      {
+        "name": "type",
+        "value": 48
+      },
+      {
+        "name": "collector",
+        "value": 46
+      }
+    ]
+  }
+}

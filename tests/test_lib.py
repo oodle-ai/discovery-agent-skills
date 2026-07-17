@@ -127,6 +127,38 @@ class TestSummaryWriter:
         jsonschema.validate(json.loads(path.read_text()), summary_schema)
 
 
+class TestParseGoDuration:
+    def test_simple_hours(self):
+        from lib.cli import parse_go_duration_s
+
+        assert parse_go_duration_s("720h") == 720 * 3600
+
+    def test_days(self):
+        from lib.cli import parse_go_duration_s
+
+        assert parse_go_duration_s("30d") == 30 * 86400
+
+    def test_compound(self):
+        from lib.cli import parse_go_duration_s
+
+        assert parse_go_duration_s("2h30m0s") == 2 * 3600 + 30 * 60
+
+    def test_seconds_only(self):
+        from lib.cli import parse_go_duration_s
+
+        assert parse_go_duration_s("90s") == 90
+
+    def test_empty_returns_none(self):
+        from lib.cli import parse_go_duration_s
+
+        assert parse_go_duration_s("") is None
+
+    def test_garbage_returns_none(self):
+        from lib.cli import parse_go_duration_s
+
+        assert parse_go_duration_s("foobar") is None
+
+
 class TestHttpClient:
     def test_circuit_breaker(self, respx_mock):
         import httpx

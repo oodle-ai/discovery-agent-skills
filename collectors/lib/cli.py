@@ -69,6 +69,17 @@ def parse_headers(raw: list[str]) -> dict[str, str]:
     return out
 
 
+def parse_go_duration_s(s: str) -> int | None:
+    """Parse Go-style duration ('720h', '30d', '2h30m0s') into seconds."""
+    s = s.strip()
+    if not s:
+        return None
+    total = 0
+    for m in re.finditer(r"(\d+)([dhms])", s):
+        total += int(m.group(1)) * {"d": 86400, "h": 3600, "m": 60, "s": 1}[m.group(2)]
+    return total if total > 0 else None
+
+
 def credential(
     flag_value: str | None,
     env_var: str,

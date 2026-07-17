@@ -1,0 +1,34 @@
+services:
+  victoriametrics:
+    image: victoriametrics/victoria-metrics:v1.103.0
+    ports: ["8428:8428"]
+    command:
+      - '-retentionPeriod=90d'
+      - '-selfScrapeInterval=15s'
+
+  prometheus:
+    image: prom/prometheus:v2.54.0
+    volumes:
+      - ./prometheus-vm.yml:/etc/prometheus/prometheus.yml
+
+  node-exporter:
+    image: prom/node-exporter:v1.8.2
+    ports: ["9100:9100"]
+
+  seed:
+    image: curlimages/curl:latest
+    depends_on:
+      victoriametrics:
+        condition: service_started
+      prometheus:
+        condition: service_started
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        echo "Waiting for VictoriaMetrics..."
+        until curl -sf http://victoriametrics:8428/health; do sleep 2; done
+        echo "Waiting 60s for metrics..."
+        sleep 60
+        echo ""
+        echo "=== Ready to test ==="
+        echo "uv run collectors/promstack/collect.py --endpoint http://localhost:8428 --output-dir ./discovery-output/promstack"

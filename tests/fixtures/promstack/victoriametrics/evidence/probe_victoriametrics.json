@@ -1,0 +1,38 @@
+{
+  "status": "success",
+  "data": {
+    "resultType": "vector",
+    "result": [
+      {
+        "metric": {
+          "__name__": "vm_app_version",
+          "instance": "self",
+          "job": "victoria-metrics",
+          "short_version": "v1.103.0",
+          "version": "victoria-metrics-20240828-135334-tags-v1.103.0-0-g5aeb759df9"
+        },
+        "value": [
+          1782127338,
+          "1"
+        ]
+      },
+      {
+        "metric": {
+          "__name__": "vm_app_version",
+          "instance": "victoriametrics:8428",
+          "job": "victoriametrics",
+          "short_version": "v1.103.0",
+          "version": "victoria-metrics-20240828-135334-tags-v1.103.0-0-g5aeb759df9"
+        },
+        "value": [
+          1782127338,
+          "1"
+        ]
+      }
+    ]
+  },
+  "stats": {
+    "seriesFetched": "2",
+    "executionTimeMsec": 5
+  }
+}

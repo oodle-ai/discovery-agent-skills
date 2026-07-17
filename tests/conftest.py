@@ -79,6 +79,13 @@ def mimir_collect():
 
 
 @pytest.fixture(scope="session")
+def promstack_collect():
+    return load_module(
+        "promstack_collect", REPO_ROOT / "collectors" / "promstack" / "collect.py"
+    )
+
+
+@pytest.fixture(scope="session")
 def report_gen():
     return load_module("generate_report", REPO_ROOT / "report" / "generate_report.py")
 

@@ -1,0 +1,38 @@
+services:
+  loki:
+    image: grafana/loki:3.0.0
+    ports: ["3100:3100"]
+    volumes:
+      - ./loki-config.yml:/etc/loki/local-config.yaml
+    command: -config.file=/etc/loki/local-config.yaml
+
+  prometheus:
+    image: prom/prometheus:v2.54.0
+    ports: ["9090:9090"]
+    volumes:
+      - ./prometheus-loki.yml:/etc/prometheus/prometheus.yml
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.retention.time=15d'
+
+  seed-logs:
+    image: curlimages/curl:latest
+    depends_on: [loki, prometheus]
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        echo "Waiting for Loki..."
+        until curl -sf http://loki:3100/ready; do sleep 2; done
+        echo "Pushing test log data..."
+        for i in $$(seq 1 200); do
+          TS=$$(date +%s)000000000
+          curl -s -X POST http://loki:3100/loki/api/v1/push \
+            -H 'Content-Type: application/json' \
+            -d "{\"streams\":[{\"stream\":{\"job\":\"test-app\",\"level\":\"info\",\"namespace\":\"default\"},\"values\":[[\"$$TS\",\"log line $$i: request processed successfully status=200 duration=42ms trace_id=abc$$i\"]]}]}"
+          sleep 0.05
+        done
+        echo "Waiting 45s for Prometheus to scrape Loki metrics..."
+        sleep 45
+        echo ""
+        echo "=== Ready to test ==="
+        echo "uv run collectors/promstack/collect.py --endpoint http://localhost:9090 --loki-endpoint http://localhost:3100 --output-dir ./discovery-output/promstack"

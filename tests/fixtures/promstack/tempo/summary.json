@@ -1,0 +1,216 @@
+{
+  "schema_version": "1.0",
+  "collector": "promstack",
+  "collector_version": "1.0.0",
+  "run": {
+    "started_at": "2026-06-22T11:33:00Z",
+    "finished_at": "2026-06-22T11:33:00Z",
+    "target": "http://localhost:9090",
+    "lookback": "7d",
+    "args_redacted": {}
+  },
+  "environment": {
+    "detected_backend": "prometheus",
+    "version": "2.54.0",
+    "detection_method": "prometheus_build_info metric present"
+  },
+  "figures": [
+    {
+      "id": "metrics.active_series",
+      "label": "Active time series",
+      "value": 1099,
+      "unit": "series",
+      "status": "ok",
+      "method": "TSDB head stats",
+      "source_api": "GET /api/v1/status/tsdb",
+      "query": null,
+      "time_window": null,
+      "evidence_files": [
+        "evidence/tsdb_status.json"
+      ],
+      "notes": null,
+      "unavailable_reason": null,
+      "remediation": null
+    },
+    {
+      "id": "metrics.samples_per_sec",
+      "label": "Ingestion rate",
+      "value": 19.34,
+      "unit": "samples/sec",
+      "status": "ok",
+      "method": "5m rate of head samples appended",
+      "source_api": "GET /api/v1/query",
+      "query": "sum(rate(prometheus_tsdb_head_samples_appended_total[5m]))",
+      "time_window": null,
+      "evidence_files": [
+        "evidence/prom_instant_samples_rate.json"
+      ],
+      "notes": null,
+      "unavailable_reason": null,
+      "remediation": null
+    },
+    {
+      "id": "promstack.scrape_targets",
+      "label": "Scrape targets",
+      "value": 2.0,
+      "unit": "targets",
+      "status": "ok",
+      "method": "count of up metric",
+      "source_api": "GET /api/v1/query",
+      "query": "count(up)",
+      "time_window": null,
+      "evidence_files": [
+        "evidence/prom_instant_scrape_targets.json"
+      ],
+      "notes": null,
+      "unavailable_reason": null,
+      "remediation": null
+    },
+    {
+      "id": "promstack.retention_days",
+      "label": "Retention period",
+      "value": 15.0,
+      "unit": "days",
+      "status": "ok",
+      "method": "storage.tsdb.retention.time=15d",
+      "source_api": "GET /api/v1/status/flags",
+      "query": null,
+      "time_window": null,
+      "evidence_files": [
+        "evidence/status_flags.json"
+      ],
+      "notes": null,
+      "unavailable_reason": null,
+      "remediation": null
+    },
+    {
+      "id": "logs.ingest_gb_per_day",
+      "label": "Log ingestion rate",
+      "value": null,
+      "unit": "GB/day",
+      "status": "unavailable",
+      "method": null,
+      "source_api": null,
+      "query": null,
+      "time_window": null,
+      "evidence_files": [],
+      "notes": null,
+      "unavailable_reason": "not_configured: Loki distributor metrics not found in TSDB",
+      "remediation": "Ensure Loki metrics are scraped into your TSDB, or provide --loki-endpoint"
+    },
+    {
+      "id": "logs.retention_days",
+      "label": "Log retention",
+      "value": null,
+      "unit": "days",
+      "status": "unavailable",
+      "method": null,
+      "source_api": null,
+      "query": null,
+      "time_window": null,
+      "evidence_files": [],
+      "notes": null,
+      "unavailable_reason": "not_configured: Loki /config not available",
+      "remediation": "Provide --loki-endpoint to read Loki config"
+    },
+    {
+      "id": "traces.spans_per_sec",
+      "label": "Span ingestion rate",
+      "value": 14.3,
+      "unit": "spans/sec",
+      "status": "ok",
+      "method": "sum(rate(tempo_distributor_spans_received_total[5m]))",
+      "source_api": "GET /api/v1/query",
+      "query": "sum(rate(tempo_distributor_spans_received_total[5m]))",
+      "time_window": null,
+      "evidence_files": [
+        "evidence/tempo_instant_spans_rate.json"
+      ],
+      "notes": null,
+      "unavailable_reason": null,
+      "remediation": null
+    },
+    {
+      "id": "traces.ingest_gb_per_day",
+      "label": "Trace ingestion rate",
+      "value": 0.18,
+      "unit": "GB/day",
+      "status": "ok",
+      "method": "sum(rate(tempo_distributor_bytes_received_total[5m])) * 86400 / GiB",
+      "source_api": "GET /api/v1/query",
+      "query": "sum(rate(tempo_distributor_bytes_received_total[5m]))",
+      "time_window": null,
+      "evidence_files": [
+        "evidence/tempo_instant_ingest_rate.json"
+      ],
+      "notes": null,
+      "unavailable_reason": null,
+      "remediation": null
+    }
+  ],
+  "inventory": {
+    "backend": "prometheus",
+    "top_metrics_by_series": [
+      {
+        "name": "tempo_request_duration_seconds_bucket",
+        "value": 75
+      },
+      {
+        "name": "prometheus_http_requests_total",
+        "value": 51
+      },
+      {
+        "name": "tempo_kv_request_duration_seconds_bucket",
+        "value": 48
+      },
+      {
+        "name": "tempo_response_message_bytes_bucket",
+        "value": 45
+      },
+      {
+        "name": "tempo_request_message_bytes_bucket",
+        "value": 45
+      },
+      {
+        "name": "prometheus_sd_kubernetes_events_total",
+        "value": 18
+      },
+      {
+        "name": "prometheus_tsdb_compaction_duration_seconds_bucket",
+        "value": 15
+      },
+      {
+        "name": "prometheus_tsdb_compaction_chunk_samples_bucket",
+        "value": 13
+      },
+      {
+        "name": "prometheus_tsdb_compaction_chunk_size_bytes_bucket",
+        "value": 13
+      },
+      {
+        "name": "tempo_query_frontend_queue_duration_seconds_bucket",
+        "value": 12
+      }
+    ]
+  },
+  "gaps": [
+    {
+      "area": "logs",
+      "figure_ids": [
+        "logs.ingest_gb_per_day"
+      ],
+      "reason": "not_configured",
+      "detail": "Loki distributor metrics not found in TSDB",
+      "remediation": "Ensure Loki metrics are scraped into your TSDB, or provide --loki-endpoint"
+    },
+    {
+      "area": "logs",
+      "figure_ids": [
+        "logs.retention_days"
+      ],
+      "reason": "not_configured",
+      "detail": "Loki /config not available",
+      "remediation": "Provide --loki-endpoint to read Loki config"
+    }
+  ]
+}
