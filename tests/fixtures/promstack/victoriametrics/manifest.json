@@ -1,0 +1,44 @@
+[
+  {
+    "name": "buildinfo",
+    "file": "evidence/buildinfo.json",
+    "source_api": "GET /api/v1/status/buildinfo",
+    "written_at": "2026-06-22T11:22:18Z"
+  },
+  {
+    "name": "probe_victoriametrics",
+    "file": "evidence/probe_victoriametrics.json",
+    "source_api": "GET /api/v1/query?query=vm_app_version",
+    "written_at": "2026-06-22T11:22:18Z"
+  },
+  {
+    "name": "tsdb_status",
+    "file": "evidence/tsdb_status.json",
+    "source_api": "GET /api/v1/status/tsdb",
+    "written_at": "2026-06-22T11:22:18Z"
+  },
+  {
+    "name": "status_flags",
+    "file": "evidence/status_flags.json",
+    "source_api": "GET /flags",
+    "written_at": "2026-06-22T11:22:18Z"
+  },
+  {
+    "name": "prom_instant_active_series",
+    "file": "evidence/prom_instant_active_series.json",
+    "source_api": "GET /api/v1/query?query=vm_cache_entries{type=\"storage/hour_metric_ids\"}",
+    "written_at": "2026-06-22T11:22:18Z"
+  },
+  {
+    "name": "prom_instant_samples_rate",
+    "file": "evidence/prom_instant_samples_rate.json",
+    "source_api": "GET /api/v1/query?query=sum(rate(vm_rows_inserted_total[5m]))",
+    "written_at": "2026-06-22T11:22:18Z"
+  },
+  {
+    "name": "prom_instant_scrape_targets",
+    "file": "evidence/prom_instant_scrape_targets.json",
+    "source_api": "GET /api/v1/query?query=count(up)",
+    "written_at": "2026-06-22T11:22:19Z"
+  }
+]

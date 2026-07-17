@@ -1,0 +1,62 @@
+[
+  {
+    "name": "buildinfo",
+    "file": "evidence/buildinfo.json",
+    "source_api": "GET /api/v1/status/buildinfo",
+    "written_at": "2026-06-22T11:30:20Z"
+  },
+  {
+    "name": "probe_prometheus",
+    "file": "evidence/probe_prometheus.json",
+    "source_api": "GET /api/v1/query?query=prometheus_build_info",
+    "written_at": "2026-06-22T11:30:20Z"
+  },
+  {
+    "name": "tsdb_status",
+    "file": "evidence/tsdb_status.json",
+    "source_api": "GET /api/v1/status/tsdb",
+    "written_at": "2026-06-22T11:30:21Z"
+  },
+  {
+    "name": "status_flags",
+    "file": "evidence/status_flags.json",
+    "source_api": "GET /api/v1/status/flags",
+    "written_at": "2026-06-22T11:30:21Z"
+  },
+  {
+    "name": "prom_instant_samples_rate",
+    "file": "evidence/prom_instant_samples_rate.json",
+    "source_api": "GET /api/v1/query?query=sum(rate(prometheus_tsdb_head_samples_appended_total[5m]))",
+    "written_at": "2026-06-22T11:30:21Z"
+  },
+  {
+    "name": "prom_instant_scrape_targets",
+    "file": "evidence/prom_instant_scrape_targets.json",
+    "source_api": "GET /api/v1/query?query=count(up)",
+    "written_at": "2026-06-22T11:30:21Z"
+  },
+  {
+    "name": "loki_instant_ingest_rate",
+    "file": "evidence/loki_instant_ingest_rate.json",
+    "source_api": "GET /api/v1/query?query=sum(rate(loki_distributor_bytes_received_total[5m]))",
+    "written_at": "2026-06-22T11:30:21Z"
+  },
+  {
+    "name": "loki_buildinfo",
+    "file": "evidence/loki_buildinfo.json",
+    "source_api": "GET /loki/api/v1/status/buildinfo",
+    "written_at": "2026-06-22T11:30:22Z"
+  },
+  {
+    "name": "loki_config",
+    "file": "evidence/loki_config.json",
+    "source_api": "GET /config",
+    "written_at": "2026-06-22T11:30:22Z"
+  },
+  {
+    "name": "loki_metrics_scrape",
+    "file": "evidence/loki_metrics_scrape.json",
+    "source_api": "GET /metrics",
+    "written_at": "2026-06-22T11:30:22Z"
+  }
+]

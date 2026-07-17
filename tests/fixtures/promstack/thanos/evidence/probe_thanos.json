@@ -1,0 +1,29 @@
+{
+  "status": "success",
+  "data": {
+    "resultType": "vector",
+    "result": [
+      {
+        "metric": {
+          "__name__": "thanos_build_info",
+          "branch": "HEAD",
+          "cluster": "test",
+          "goarch": "arm64",
+          "goos": "linux",
+          "goversion": "go1.21.13",
+          "instance": "thanos-querier:10902",
+          "job": "thanos-querier",
+          "replica": "prom-0",
+          "revision": "99a5742a15f107d4607d280c825eca5b7f09a253",
+          "tags": "netgo",
+          "version": "0.36.1"
+        },
+        "value": [
+          1782127468.506,
+          "1"
+        ]
+      }
+    ],
+    "analysis": {}
+  }
+}

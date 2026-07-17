@@ -1,0 +1,180 @@
+{
+  "status": "success",
+  "data": {
+    "headStats": {
+      "numSeries": 1687,
+      "numLabelPairs": 918,
+      "chunkCount": 1687,
+      "minTime": 1782127517324,
+      "maxTime": 1782127818666
+    },
+    "seriesCountByMetricName": [
+      {
+        "name": "loki_kv_request_duration_seconds_bucket",
+        "value": 96
+      },
+      {
+        "name": "loki_cache_value_size_bytes_bucket",
+        "value": 80
+      },
+      {
+        "name": "loki_request_duration_seconds_bucket",
+        "value": 75
+      },
+      {
+        "name": "loki_request_message_bytes_bucket",
+        "value": 54
+      },
+      {
+        "name": "prometheus_http_requests_total",
+        "value": 51
+      },
+      {
+        "name": "loki_response_message_bytes_bucket",
+        "value": 45
+      },
+      {
+        "name": "go_gc_heap_frees_by_size_bytes_bucket",
+        "value": 24
+      },
+      {
+        "name": "go_gc_heap_allocs_by_size_bytes_bucket",
+        "value": 24
+      },
+      {
+        "name": "loki_ring_members",
+        "value": 20
+      },
+      {
+        "name": "loki_ring_oldest_member_timestamp",
+        "value": 20
+      }
+    ],
+    "labelValueCountByLabelName": [
+      {
+        "name": "__name__",
+        "value": 539
+      },
+      {
+        "name": "le",
+        "value": 189
+      },
+      {
+        "name": "handler",
+        "value": 51
+      },
+      {
+        "name": "quantile",
+        "value": 13
+      },
+      {
+        "name": "name",
+        "value": 12
+      },
+      {
+        "name": "state",
+        "value": 7
+      },
+      {
+        "name": "role",
+        "value": 7
+      },
+      {
+        "name": "route",
+        "value": 6
+      },
+      {
+        "name": "kv_name",
+        "value": 6
+      },
+      {
+        "name": "status_code",
+        "value": 5
+      }
+    ],
+    "memoryInBytesByLabelName": [
+      {
+        "name": "__name__",
+        "value": 62193
+      },
+      {
+        "name": "instance",
+        "value": 17973
+      },
+      {
+        "name": "job",
+        "value": 10096
+      },
+      {
+        "name": "le",
+        "value": 5824
+      },
+      {
+        "name": "name",
+        "value": 4982
+      },
+      {
+        "name": "route",
+        "value": 4191
+      },
+      {
+        "name": "kv_name",
+        "value": 2422
+      },
+      {
+        "name": "method",
+        "value": 1251
+      },
+      {
+        "name": "type",
+        "value": 1051
+      },
+      {
+        "name": "operation",
+        "value": 1043
+      }
+    ],
+    "seriesCountByLabelValuePair": [
+      {
+        "name": "instance=loki:3100",
+        "value": 1129
+      },
+      {
+        "name": "job=loki",
+        "value": 1129
+      },
+      {
+        "name": "job=prometheus",
+        "value": 558
+      },
+      {
+        "name": "instance=localhost:9090",
+        "value": 558
+      },
+      {
+        "name": "status_code=200",
+        "value": 188
+      },
+      {
+        "name": "type=inmemory",
+        "value": 126
+      },
+      {
+        "name": "role=primary",
+        "value": 126
+      },
+      {
+        "name": "method=GET",
+        "value": 97
+      },
+      {
+        "name": "__name__=loki_kv_request_duration_seconds_bucket",
+        "value": 96
+      },
+      {
+        "name": "ws=false",
+        "value": 85
+      }
+    ]
+  }
+}

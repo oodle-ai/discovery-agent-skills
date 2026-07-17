@@ -1,0 +1,216 @@
+{
+  "schema_version": "1.0",
+  "collector": "promstack",
+  "collector_version": "1.0.0",
+  "run": {
+    "started_at": "2026-06-22T11:30:22Z",
+    "finished_at": "2026-06-22T11:30:22Z",
+    "target": "http://localhost:9090",
+    "lookback": "7d",
+    "args_redacted": {}
+  },
+  "environment": {
+    "detected_backend": "prometheus",
+    "version": "2.54.0",
+    "detection_method": "prometheus_build_info metric present"
+  },
+  "figures": [
+    {
+      "id": "metrics.active_series",
+      "label": "Active time series",
+      "value": 1687,
+      "unit": "series",
+      "status": "ok",
+      "method": "TSDB head stats",
+      "source_api": "GET /api/v1/status/tsdb",
+      "query": null,
+      "time_window": null,
+      "evidence_files": [
+        "evidence/tsdb_status.json"
+      ],
+      "notes": null,
+      "unavailable_reason": null,
+      "remediation": null
+    },
+    {
+      "id": "metrics.samples_per_sec",
+      "label": "Ingestion rate",
+      "value": 60.08,
+      "unit": "samples/sec",
+      "status": "ok",
+      "method": "5m rate of head samples appended",
+      "source_api": "GET /api/v1/query",
+      "query": "sum(rate(prometheus_tsdb_head_samples_appended_total[5m]))",
+      "time_window": null,
+      "evidence_files": [
+        "evidence/prom_instant_samples_rate.json"
+      ],
+      "notes": null,
+      "unavailable_reason": null,
+      "remediation": null
+    },
+    {
+      "id": "promstack.scrape_targets",
+      "label": "Scrape targets",
+      "value": 2.0,
+      "unit": "targets",
+      "status": "ok",
+      "method": "count of up metric",
+      "source_api": "GET /api/v1/query",
+      "query": "count(up)",
+      "time_window": null,
+      "evidence_files": [
+        "evidence/prom_instant_scrape_targets.json"
+      ],
+      "notes": null,
+      "unavailable_reason": null,
+      "remediation": null
+    },
+    {
+      "id": "promstack.retention_days",
+      "label": "Retention period",
+      "value": 15.0,
+      "unit": "days",
+      "status": "ok",
+      "method": "storage.tsdb.retention.time=15d",
+      "source_api": "GET /api/v1/status/flags",
+      "query": null,
+      "time_window": null,
+      "evidence_files": [
+        "evidence/status_flags.json"
+      ],
+      "notes": null,
+      "unavailable_reason": null,
+      "remediation": null
+    },
+    {
+      "id": "logs.ingest_gb_per_day",
+      "label": "Log ingestion rate",
+      "value": 0.0,
+      "unit": "GB/day",
+      "status": "ok",
+      "method": "sum(rate(loki_distributor_bytes_received_total[5m])) * 86400 / GiB",
+      "source_api": "GET /api/v1/query",
+      "query": "sum(rate(loki_distributor_bytes_received_total[5m]))",
+      "time_window": null,
+      "evidence_files": [
+        "evidence/loki_instant_ingest_rate.json"
+      ],
+      "notes": null,
+      "unavailable_reason": null,
+      "remediation": null
+    },
+    {
+      "id": "logs.retention_days",
+      "label": "Log retention",
+      "value": 30.0,
+      "unit": "days",
+      "status": "ok",
+      "method": "limits_config.retention_period from /config",
+      "source_api": "GET /config",
+      "query": null,
+      "time_window": null,
+      "evidence_files": [
+        "evidence/loki_config.json"
+      ],
+      "notes": null,
+      "unavailable_reason": null,
+      "remediation": null
+    },
+    {
+      "id": "traces.spans_per_sec",
+      "label": "Span ingestion rate",
+      "value": null,
+      "unit": "spans/sec",
+      "status": "unavailable",
+      "method": null,
+      "source_api": null,
+      "query": null,
+      "time_window": null,
+      "evidence_files": [],
+      "notes": null,
+      "unavailable_reason": "not_configured: Tempo distributor metrics not found in TSDB",
+      "remediation": "Ensure Tempo metrics are scraped into your TSDB, or provide --tempo-endpoint"
+    },
+    {
+      "id": "traces.ingest_gb_per_day",
+      "label": "Trace ingestion rate",
+      "value": null,
+      "unit": "GB/day",
+      "status": "unavailable",
+      "method": null,
+      "source_api": null,
+      "query": null,
+      "time_window": null,
+      "evidence_files": [],
+      "notes": null,
+      "unavailable_reason": "not_configured: Tempo distributor metrics not found in TSDB",
+      "remediation": "Ensure Tempo metrics are scraped into your TSDB, or provide --tempo-endpoint"
+    }
+  ],
+  "inventory": {
+    "backend": "prometheus",
+    "top_metrics_by_series": [
+      {
+        "name": "loki_kv_request_duration_seconds_bucket",
+        "value": 96
+      },
+      {
+        "name": "loki_cache_value_size_bytes_bucket",
+        "value": 80
+      },
+      {
+        "name": "loki_request_duration_seconds_bucket",
+        "value": 75
+      },
+      {
+        "name": "loki_request_message_bytes_bucket",
+        "value": 54
+      },
+      {
+        "name": "prometheus_http_requests_total",
+        "value": 51
+      },
+      {
+        "name": "loki_response_message_bytes_bucket",
+        "value": 45
+      },
+      {
+        "name": "go_gc_heap_frees_by_size_bytes_bucket",
+        "value": 24
+      },
+      {
+        "name": "go_gc_heap_allocs_by_size_bytes_bucket",
+        "value": 24
+      },
+      {
+        "name": "loki_ring_members",
+        "value": 20
+      },
+      {
+        "name": "loki_ring_oldest_member_timestamp",
+        "value": 20
+      }
+    ]
+  },
+  "gaps": [
+    {
+      "area": "traces",
+      "figure_ids": [
+        "traces.spans_per_sec"
+      ],
+      "reason": "not_configured",
+      "detail": "Tempo distributor metrics not found in TSDB",
+      "remediation": "Ensure Tempo metrics are scraped into your TSDB, or provide --tempo-endpoint"
+    },
+    {
+      "area": "traces",
+      "figure_ids": [
+        "traces.ingest_gb_per_day"
+      ],
+      "reason": "not_configured",
+      "detail": "Tempo distributor metrics not found in TSDB",
+      "remediation": "Ensure Tempo metrics are scraped into your TSDB, or provide --tempo-endpoint"
+    }
+  ]
+}

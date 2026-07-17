@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Infrastructure &amp; Observability Discovery Report</title>
+<style>
+  :root {
+    --primary: #1a1a2e;
+    --accent: #4f46e5;
+    --bg: #f8fafc;
+    --card: #ffffff;
+    --text: #1e293b;
+    --text-muted: #64748b;
+    --border: #e2e8f0;
+    --success: #10b981;
+    --warning: #f59e0b;
+    --danger: #ef4444;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+  }
+  .header { background: var(--primary); color: white; padding: 3rem 2rem; text-align: center; }
+  .header h1 { font-size: 2rem; margin-bottom: 0.5rem; }
+  .header p { color: #94a3b8; font-size: 1.1rem; }
+  .container { max-width: 1100px; margin: 0 auto; padding: 2rem; }
+  .summary-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 1rem;
+    margin: 2rem 0;
+  }
+  .summary-card {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 12px; padding: 1.25rem; text-align: center;
+  }
+  .summary-card .value { font-size: 1.75rem; font-weight: 700; color: var(--accent); }
+  .summary-card .label { color: var(--text-muted); font-size: 0.8rem; margin-top: 0.25rem; }
+  .section {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 12px; padding: 1.75rem; margin: 1.25rem 0;
+  }
+  .section h2 {
+    font-size: 1.3rem; margin-bottom: 0.75rem; color: var(--primary);
+    border-bottom: 2px solid var(--accent); padding-bottom: 0.5rem;
+  }
+  .section h3 { font-size: 1.05rem; margin: 1rem 0 0.5rem; color: var(--primary); }
+  table { width: 100%; border-collapse: collapse; margin: 0.75rem 0; font-size: 0.9rem; }
+  th, td { padding: 0.6rem 0.75rem; text-align: left; border-bottom: 1px solid var(--border); }
+  th {
+    background: var(--bg); font-weight: 600; color: var(--text-muted);
+    text-transform: uppercase; font-size: 0.75rem; letter-spacing: 0.05em;
+  }
+  .tag {
+    display: inline-block; padding: 0.2rem 0.6rem; border-radius: 9999px;
+    font-size: 0.75rem; font-weight: 500; margin: 0.125rem;
+  }
+  .tag-blue { background: #dbeafe; color: #1d4ed8; }
+  .tag-green { background: #d1fae5; color: #065f46; }
+  .tag-purple { background: #ede9fe; color: #5b21b6; }
+  .tag-orange { background: #ffedd5; color: #9a3412; }
+  .tag-red { background: #fee2e2; color: #991b1b; }
+  .tag-gray { background: #f1f5f9; color: #475569; }
+  .pain-point {
+    border-left: 4px solid var(--warning); padding: 0.75rem 1.25rem;
+    margin: 0.5rem 0; background: #fffbeb; border-radius: 0 8px 8px 0;
+  }
+  .recommendation {
+    border-left: 4px solid var(--success); padding: 0.75rem 1.25rem;
+    margin: 0.5rem 0; background: #ecfdf5; border-radius: 0 8px 8px 0;
+  }
+  .env-badge {
+    display: inline-block; padding: 0.2rem 0.6rem; border-radius: 4px;
+    font-size: 0.75rem; font-weight: 600; text-transform: uppercase;
+  }
+  .env-prod { background: #fee2e2; color: #991b1b; }
+  .env-staging { background: #fef3c7; color: #92400e; }
+  .env-dev { background: #d1fae5; color: #065f46; }
+  .env-other { background: #f1f5f9; color: #475569; }
+  .footer { text-align: center; padding: 2rem; color: var(--text-muted); font-size: 0.85rem; }
+  ul { padding-left: 1.5rem; margin: 0.5rem 0; }
+  li { margin: 0.25rem 0; }
+
+  /* status + provenance */
+  .status-badge {
+    display: inline-block; padding: 0.1rem 0.5rem; border-radius: 4px;
+    font-size: 0.7rem; font-weight: 600; text-transform: uppercase;
+  }
+  .status-ok { background: #d1fae5; color: #065f46; }
+  .status-estimated { background: #fef3c7; color: #92400e; }
+  .status-partial { background: #ffedd5; color: #9a3412; }
+  .status-unavailable { background: #fee2e2; color: #991b1b; }
+  .status-reported { background: #f1f5f9; color: #475569; }
+  .narrative {
+    border-left: 4px solid var(--accent); padding: 0.75rem 1.25rem;
+    margin: 0.5rem 0; background: #eef2ff; border-radius: 0 8px 8px 0;
+    font-size: 0.95rem;
+  }
+  details.deep-dive {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 12px; margin: 1rem 0; padding: 0;
+  }
+  details.deep-dive > summary {
+    cursor: pointer; padding: 1rem 1.5rem; font-weight: 600;
+    color: var(--primary); font-size: 1.05rem; list-style-position: inside;
+  }
+  details.deep-dive > .deep-dive-body { padding: 0 1.75rem 1.5rem; }
+  .provenance { font-size: 0.8rem; }
+  .provenance td { font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+                   font-size: 0.75rem; vertical-align: top; }
+  .provenance td:nth-child(1), .provenance td:nth-child(2) { white-space: nowrap; }
+  .table-wrap { overflow-x: auto; }
+  svg.spark { color: var(--accent); vertical-align: middle; display: block; }
+  .muted { color: var(--text-muted); font-size: 0.85rem; }
+  code { background: #f1f5f9; padding: 0.1rem 0.3rem; border-radius: 4px;
+         font-size: 0.85em; overflow-wrap: anywhere; }
+
+  /* pure-CSS tooltips (title attributes are unreliable/invisible) */
+  [data-tip] { position: relative; cursor: help; }
+  [data-tip]:hover::after {
+    content: attr(data-tip);
+    position: absolute; left: 50%; transform: translateX(-50%);
+    bottom: calc(100% + 6px);
+    background: var(--primary); color: #f1f5f9;
+    padding: 0.45rem 0.65rem; border-radius: 6px;
+    font-size: 0.75rem; font-weight: 400; line-height: 1.4;
+    white-space: pre-line; width: max-content; max-width: 340px;
+    text-align: left; z-index: 10; pointer-events: none;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.25);
+  }
+</style>
+</head>
+<body>
+<div class="header">
+  <h1>Infrastructure &amp; Observability Discovery Report</h1>
+  <p>Generated on 2026-07-17</p>
+</div>
+<div class="container">
+<div class="summary-grid"><div class="summary-card"><div class="value">—</div><div class="label">Environments</div></div>
+<div class="summary-card"><div class="value">—</div><div class="label">Services</div></div>
+<div class="summary-card"><div class="value">—</div><div class="label">Compute Nodes</div></div>
+<div class="summary-card" data-tip="promstack: 60.08 samples/sec (ok)"><div class="value">60.08 samples/sec</div><div class="label">Metrics Ingestion</div></div>
+<div class="summary-card" data-tip="promstack: 0.0 GB/day (ok)"><div class="value">0.0 GB/day</div><div class="label">Log Volume</div></div>
+<div class="summary-card" data-tip="no measured figure; see Coverage &amp; Gaps"><div class="value">—</div><div class="label">Trace Volume</div></div>
+<div class="summary-card" data-tip="no measured figure; see Coverage &amp; Gaps"><div class="value">—</div><div class="label">Est. Observability Spend</div></div>
+<div class="summary-card"><div class="value">—</div><div class="label">Team Size</div></div></div>
+<div class="section"><h2>Observability Stack &amp; Scale</h2>
+<div class="table-wrap"><table><thead><tr><th>Signal</th><th>Tools</th><th>Measured Scale (source shown; hover for detail)</th></tr></thead><tbody>
+<tr><td>Metrics</td><td>—</td><td><span data-tip="promstack: 60.08 samples/sec (ok)">60.08 samples/sec <span class="muted">· promstack</span></span> <span class="status-badge status-ok">ok</span><br><span data-tip="promstack: 1.7K series (ok)">1.7K active series <span class="muted">· promstack</span></span> <span class="status-badge status-ok">ok</span></td></tr>
+<tr><td>Logs</td><td>—</td><td><span data-tip="promstack: 0.0 GB/day (ok)">0 GB/day ingested <span class="muted">· promstack</span></span> <span class="status-badge status-ok">ok</span><br><span data-tip="promstack: 30 days (ok)">30 days retention <span class="muted">· promstack</span></span> <span class="status-badge status-ok">ok</span></td></tr>
+</tbody></table></div>
+</div>
+<div class="section" id="coverage"><h2>Coverage &amp; Gaps</h2>
+<div class="table-wrap"><table><thead><tr><th>Collector</th><th>Figures collected</th><th>Target</th><th>Lookback</th></tr></thead><tbody>
+<tr><td>promstack</td><td>6/8</td><td>http://localhost:9090</td><td>7d</td></tr>
+</tbody></table></div>
+<h3>Gaps</h3>
+<div class="table-wrap"><table><thead><tr><th>Collector</th><th>Area</th><th>Figures</th><th>Reason</th><th>Detail</th><th>Remediation</th></tr></thead><tbody>
+<tr><td>promstack</td><td>traces</td><td><code>traces.spans_per_sec</code></td><td><span class="tag tag-red">not_configured</span></td><td>Tempo distributor metrics not found in TSDB</td><td>Ensure Tempo metrics are scraped into your TSDB, or provide --tempo-endpoint</td></tr>
+<tr><td>promstack</td><td>traces</td><td><code>traces.ingest_gb_per_day</code></td><td><span class="tag tag-red">not_configured</span></td><td>Tempo distributor metrics not found in TSDB</td><td>Ensure Tempo metrics are scraped into your TSDB, or provide --tempo-endpoint</td></tr>
+</tbody></table></div>
+</div>
+<h2 style='margin:2rem 0 0.5rem'>Deep Dives</h2>
+<details class="deep-dive"><summary>promstack — collected details</summary><div class="deep-dive-body"><p class="muted">Detected: detected_backend=prometheus, version=2.54.0</p>
+<div class="table-wrap"><table><thead><tr><th>Figure</th><th>Value</th><th>Status</th><th>Method / Reason</th><th>Window</th></tr></thead><tbody>
+<tr><td>Active time series</td><td>1.7K series</td><td><span class="status-badge status-ok">ok</span></td><td>TSDB head stats</td><td>—</td></tr>
+<tr><td>Ingestion rate</td><td>60.08 samples/sec</td><td><span class="status-badge status-ok">ok</span></td><td>5m rate of head samples appended</td><td>—</td></tr>
+<tr><td>Scrape targets</td><td>2 targets</td><td><span class="status-badge status-ok">ok</span></td><td>count of up metric</td><td>—</td></tr>
+<tr><td>Retention period</td><td>15 days</td><td><span class="status-badge status-ok">ok</span></td><td>storage.tsdb.retention.time=15d</td><td>—</td></tr>
+<tr><td>Log ingestion rate</td><td>0.0 GB/day</td><td><span class="status-badge status-ok">ok</span></td><td>sum(rate(loki_distributor_bytes_received_total[5m])) * 86400 / GiB</td><td>—</td></tr>
+<tr><td>Log retention</td><td>30 days</td><td><span class="status-badge status-ok">ok</span></td><td>limits_config.retention_period from /config</td><td>—</td></tr>
+<tr><td>Span ingestion rate</td><td>—</td><td><span class="status-badge status-unavailable">unavailable</span></td><td>not_configured: Tempo distributor metrics not found in TSDB</td><td>—</td></tr>
+<tr><td>Trace ingestion rate</td><td>—</td><td><span class="status-badge status-unavailable">unavailable</span></td><td>not_configured: Tempo distributor metrics not found in TSDB</td><td>—</td></tr>
+</tbody></table></div>
+<div class="table-wrap"><table><thead><tr><th>Fact</th><th>Value</th></tr></thead><tbody>
+<tr><td>Backend</td><td>prometheus</td></tr>
+</tbody></table></div>
+<h3>Top metrics by series</h3>
+<div class="table-wrap"><table><thead><tr><th>name</th><th>value</th></tr></thead><tbody>
+<tr><td>loki_kv_request_duration_seconds_bucket</td><td>96</td></tr>
+<tr><td>loki_cache_value_size_bytes_bucket</td><td>80</td></tr>
+<tr><td>loki_request_duration_seconds_bucket</td><td>75</td></tr>
+<tr><td>loki_request_message_bytes_bucket</td><td>54</td></tr>
+<tr><td>prometheus_http_requests_total</td><td>51</td></tr>
+<tr><td>loki_response_message_bytes_bucket</td><td>45</td></tr>
+<tr><td>go_gc_heap_frees_by_size_bytes_bucket</td><td>24</td></tr>
+<tr><td>go_gc_heap_allocs_by_size_bytes_bucket</td><td>24</td></tr>
+<tr><td>loki_ring_members</td><td>20</td></tr>
+<tr><td>loki_ring_oldest_member_timestamp</td><td>20</td></tr>
+</tbody></table></div></div></details>
+<div class="section"><h2>Provenance Appendix</h2>
+<p class="muted">Every measured figure below can be re-derived from the raw API response captured in the listed evidence file (under each collector's output directory).</p><div class="table-wrap"><table class="provenance"><thead><tr><th>Figure</th><th>Collector</th><th>Source API</th><th>Query</th><th>Evidence</th></tr></thead><tbody>
+<tr><td><code>metrics.active_series</code></td><td>promstack</td><td>GET /api/v1/status/tsdb</td><td>—</td><td><code>evidence/tsdb_status.json</code></td></tr>
+<tr><td><code>metrics.samples_per_sec</code></td><td>promstack</td><td>GET /api/v1/query</td><td>sum(rate(prometheus_tsdb_head_samples_appended_total[5m]))</td><td><code>evidence/prom_instant_samples_rate.json</code></td></tr>
+<tr><td><code>promstack.scrape_targets</code></td><td>promstack</td><td>GET /api/v1/query</td><td>count(up)</td><td><code>evidence/prom_instant_scrape_targets.json</code></td></tr>
+<tr><td><code>promstack.retention_days</code></td><td>promstack</td><td>GET /api/v1/status/flags</td><td>—</td><td><code>evidence/status_flags.json</code></td></tr>
+<tr><td><code>logs.ingest_gb_per_day</code></td><td>promstack</td><td>GET /api/v1/query</td><td>sum(rate(loki_distributor_bytes_received_total[5m]))</td><td><code>evidence/loki_instant_ingest_rate.json</code></td></tr>
+<tr><td><code>logs.retention_days</code></td><td>promstack</td><td>GET /config</td><td>—</td><td><code>evidence/loki_config.json</code></td></tr>
+</tbody></table></div>
+</div>
+</div>
+<div class="footer">
+  Generated by the Oodle discovery skill. Every measured figure links to raw API evidence
+  (see Provenance). Items marked "reported" were stated by the user and are not verified.
+</div>
+</body>
+</html>

@@ -1,0 +1,38 @@
+[
+  {
+    "name": "buildinfo",
+    "file": "evidence/buildinfo.json",
+    "source_api": "GET /api/v1/status/buildinfo",
+    "written_at": "2026-06-22T11:24:28Z"
+  },
+  {
+    "name": "probe_thanos",
+    "file": "evidence/probe_thanos.json",
+    "source_api": "GET /api/v1/query?query=thanos_build_info",
+    "written_at": "2026-06-22T11:24:28Z"
+  },
+  {
+    "name": "prom_instant_active_series",
+    "file": "evidence/prom_instant_active_series.json",
+    "source_api": "GET /api/v1/query?query=sum(prometheus_tsdb_head_series)",
+    "written_at": "2026-06-22T11:24:28Z"
+  },
+  {
+    "name": "prom_instant_samples_rate",
+    "file": "evidence/prom_instant_samples_rate.json",
+    "source_api": "GET /api/v1/query?query=sum(rate(prometheus_tsdb_head_samples_appended_total[5m]))",
+    "written_at": "2026-06-22T11:24:28Z"
+  },
+  {
+    "name": "prom_instant_scrape_targets",
+    "file": "evidence/prom_instant_scrape_targets.json",
+    "source_api": "GET /api/v1/query?query=count(up)",
+    "written_at": "2026-06-22T11:24:28Z"
+  },
+  {
+    "name": "prom_instant_replication_factor",
+    "file": "evidence/prom_instant_replication_factor.json",
+    "source_api": "GET /api/v1/query?query=max(thanos_receive_replication_factor)",
+    "written_at": "2026-06-22T11:24:29Z"
+  }
+]

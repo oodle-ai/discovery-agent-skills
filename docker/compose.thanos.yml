@@ -1,0 +1,73 @@
+services:
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minio
+      MINIO_ROOT_PASSWORD: minio123
+    ports: ["19000:9000", "19001:9001"]
+
+  create-bucket:
+    image: minio/mc:latest
+    depends_on: [minio]
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        sleep 5
+        mc alias set local http://minio:9000 minio minio123
+        mc mb --ignore-existing local/thanos
+
+  prometheus:
+    image: prom/prometheus:v2.54.0
+    ports: ["9090:9090"]
+    volumes:
+      - ./thanos-prometheus.yml:/etc/prometheus/prometheus.yml
+      - prom-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.min-block-duration=2h'
+      - '--storage.tsdb.max-block-duration=2h'
+      - '--web.enable-lifecycle'
+
+  node-exporter:
+    image: prom/node-exporter:v1.8.2
+
+  thanos-sidecar:
+    image: thanosio/thanos:v0.36.1
+    command:
+      - sidecar
+      - '--tsdb.path=/prometheus'
+      - '--prometheus.url=http://prometheus:9090'
+      - '--grpc-address=0.0.0.0:10901'
+      - '--objstore.config-file=/etc/thanos/bucket.yml'
+    volumes:
+      - prom-data:/prometheus
+      - ./thanos-bucket.yml:/etc/thanos/bucket.yml
+    depends_on: [prometheus, create-bucket]
+
+  thanos-querier:
+    image: thanosio/thanos:v0.36.1
+    command:
+      - query
+      - '--store=thanos-sidecar:10901'
+      - '--http-address=0.0.0.0:10902'
+    ports: ["10902:10902"]
+    depends_on: [thanos-sidecar]
+
+  seed:
+    image: curlimages/curl:latest
+    depends_on: [thanos-querier]
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        echo "Waiting for Thanos Querier..."
+        until curl -sf http://thanos-querier:10902/-/ready; do sleep 2; done
+        echo "Waiting 60s for metrics..."
+        sleep 60
+        echo ""
+        echo "=== Ready to test ==="
+        echo "uv run collectors/promstack/collect.py --endpoint http://localhost:10902 --output-dir ./discovery-output/promstack"
+
+volumes:
+  prom-data:

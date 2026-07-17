@@ -1,0 +1,32 @@
+services:
+  prometheus:
+    image: prom/prometheus:v2.54.0
+    ports: ["9090:9090"]
+    volumes:
+      - ./prometheus-promstack.yml:/etc/prometheus/prometheus.yml
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.retention.time=15d'
+      - '--web.enable-lifecycle'
+
+  node-exporter:
+    image: prom/node-exporter:v1.8.2
+    ports: ["9100:9100"]
+
+  seed:
+    image: curlimages/curl:latest
+    depends_on:
+      prometheus:
+        condition: service_started
+      node-exporter:
+        condition: service_started
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        echo "Waiting for Prometheus..."
+        until curl -sf http://prometheus:9090/-/ready; do sleep 2; done
+        echo "Prometheus ready. Waiting 60s for scrape data..."
+        sleep 60
+        echo ""
+        echo "=== Ready to test ==="
+        echo "uv run collectors/promstack/collect.py --endpoint http://localhost:9090 --output-dir ./discovery-output/promstack"

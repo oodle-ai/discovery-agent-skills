@@ -31,9 +31,7 @@ deterministic collector script** (`collectors/<tool>/collect.py`) — not by the
   reason (e.g., `permission_denied`) and a remediation — never silently omitted, never guessed.
 - The report itself is rendered by `report/generate_report.py`; the agent cannot edit figures.
 
-Collector status: **Datadog**, **AWS CloudWatch**, **GCP Cloud Operations**, **Elasticsearch**, **OpenSearch**, **Grafana Mimir**, and **Kubernetes inventory** (nodes/vCPU/memory/services via kubectl) are available today. Prometheus/Thanos/VictoriaMetrics/Loki/Tempo
-collectors are in progress;
-until they ship, those tools are covered by user-reported numbers, clearly marked as unverified.
+Collector status: **Datadog**, **AWS CloudWatch**, **GCP Cloud Operations**, **Elasticsearch**, **OpenSearch**, **Grafana Mimir**, **Prometheus/Thanos/VictoriaMetrics** (with optional **Loki** and **Tempo**), and **Kubernetes inventory** (nodes/vCPU/memory/services via kubectl) are available today.
 
 ## Install
 
@@ -109,6 +107,16 @@ Raw evidence lives in `./discovery-output/` so any figure can be re-derived offl
 **See a sample OpenSearch report:** [preview it in your browser](https://htmlpreview.github.io/?https://github.com/oodle-ai/discovery-agent-skills/blob/main/examples/sample-opensearch-report.html) ([source](examples/sample-opensearch-report.html)) — generated from the synthetic test fixtures in this repo.
 
 **See a sample Mimir report:** [preview it in your browser](https://htmlpreview.github.io/?https://github.com/oodle-ai/discovery-agent-skills/blob/main/examples/sample-mimir-report.html) ([source](examples/sample-mimir-report.html)) — generated from the synthetic test fixtures in this repo.
+
+**See a sample Prometheus report:** [preview it in your browser](https://htmlpreview.github.io/?https://github.com/oodle-ai/discovery-agent-skills/blob/main/examples/sample-report-prometheus.html) ([source](examples/sample-report-prometheus.html)) — generated from a local Prometheus Docker instance.
+
+**See a sample VictoriaMetrics report:** [preview it in your browser](https://htmlpreview.github.io/?https://github.com/oodle-ai/discovery-agent-skills/blob/main/examples/sample-report-victoriametrics.html) ([source](examples/sample-report-victoriametrics.html)) — generated from a local VictoriaMetrics Docker instance.
+
+**See a sample Thanos report:** [preview it in your browser](https://htmlpreview.github.io/?https://github.com/oodle-ai/discovery-agent-skills/blob/main/examples/sample-report-thanos.html) ([source](examples/sample-report-thanos.html)) — generated from a local Thanos Docker instance.
+
+**See a sample Loki report:** [preview it in your browser](https://htmlpreview.github.io/?https://github.com/oodle-ai/discovery-agent-skills/blob/main/examples/sample-report-loki.html) ([source](examples/sample-report-loki.html)) — generated from a Prometheus + Loki Docker instance.
+
+**See a sample Tempo report:** [preview it in your browser](https://htmlpreview.github.io/?https://github.com/oodle-ai/discovery-agent-skills/blob/main/examples/sample-report-tempo.html) ([source](examples/sample-report-tempo.html)) — generated from a Prometheus + Tempo Docker instance.
 
 ## Requirements
 
