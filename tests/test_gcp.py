@@ -172,6 +172,35 @@ class TestGcpCollector:
         assert "access preflight" in gap["detail"]
         assert "test-project-1" in gap["detail"]
 
+    def test_metric_domain_breakdown_isolates_gmp(
+        self, gcp_collect, tmp_path, monkeypatch, respx_mock
+    ):
+        summary = run_collector(gcp_collect, tmp_path, monkeypatch, respx_mock)
+        inv = summary["inventory"]
+        domains = {d["domain"]: d for d in inv["metric_domains"]}
+        assert "prometheus.googleapis.com" in domains  # GMP present
+        assert "kubernetes.io" in domains
+        # GMP samples isolated: 500000 / (7*86400) samples/sec
+        assert inv["gmp_metric_samples_per_sec"] == pytest.approx(
+            fx.GMP_SAMPLES / fx.LOOKBACK_S, rel=0.01
+        )
+        # GMP bills by samples -> 0 bytes
+        assert inv["gmp_metric_gb_per_day"] == 0.0
+
+    def test_metric_queries_grouped_by_domain(
+        self, gcp_collect, tmp_path, monkeypatch, respx_mock
+    ):
+        run_collector(gcp_collect, tmp_path, monkeypatch, respx_mock)
+        samples_call = next(
+            c for c in respx_mock.calls
+            if "/timeSeries" in c.request.url.path
+            and "samples_ingested" in c.request.url.params.get("filter", "")
+            and "aggregation.perSeriesAligner" in c.request.url.params  # skip preflight
+            and c.request.url.params.get("aggregation.groupByFields")
+        )
+        assert samples_call.request.url.params.get(
+            "aggregation.groupByFields") == "metric.label.metric_domain"
+
     def test_billing_queries_are_aggregated_server_side(
         self, gcp_collect, tmp_path, monkeypatch, respx_mock
     ):

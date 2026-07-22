@@ -103,6 +103,17 @@ def _make_timeseries_response(
     }
 
 
+def _make_multidomain_timeseries(metric_type: str, by_domain: dict) -> dict:
+    """One DELTA series per metric_domain, each summing to its value (for testing
+    the group-by-metric_domain breakdown)."""
+    series = []
+    for domain, total in by_domain.items():
+        one = _make_timeseries_response(metric_type, total)["timeSeries"][0]
+        one["metric"] = {"type": metric_type, "labels": {"metric_domain": domain}}
+        series.append(one)
+    return {"timeSeries": series}
+
+
 def _make_cumulative_timeseries_response(
     metric_type: str, latest_value: int
 ) -> dict:
@@ -193,18 +204,25 @@ def _make_log_sinks(count: int) -> list[dict]:
 
 METRIC_DESCRIPTORS = _make_metric_descriptors(TOTAL_DESCRIPTORS, CUSTOM_DESCRIPTORS)
 
-BILLING_SAMPLES = _make_timeseries_response(
-    "monitoring.googleapis.com/billing/samples_ingested", TOTAL_SAMPLES
+# samples split across two metric domains, summing to TOTAL_SAMPLES; GMP
+# (prometheus.googleapis.com) is the larger slice.
+GMP_SAMPLES = 500_000
+KUBE_SAMPLES = TOTAL_SAMPLES - GMP_SAMPLES  # 104800
+BILLING_SAMPLES = _make_multidomain_timeseries(
+    "monitoring.googleapis.com/billing/samples_ingested",
+    {"prometheus.googleapis.com": GMP_SAMPLES, "kubernetes.io": KUBE_SAMPLES},
 )
 
 LOG_BILLING_INGEST = _make_timeseries_response(
     "logging.googleapis.com/billing/bytes_ingested", TOTAL_LOG_BYTES
 )
 
-# monitoring metric bytes ingested (GMP): 35 GB over 7d = 5 GB/day
+# monitoring metric bytes ingested: 35 GB over 7d = 5 GB/day. GMP bills by
+# samples, so prometheus.googleapis.com shows 0 bytes; the volume is Stackdriver.
 TOTAL_METRIC_BYTES = 35_000_000_000
-METRIC_BILLING_BYTES = _make_timeseries_response(
-    "monitoring.googleapis.com/billing/bytes_ingested", TOTAL_METRIC_BYTES
+METRIC_BILLING_BYTES = _make_multidomain_timeseries(
+    "monitoring.googleapis.com/billing/bytes_ingested",
+    {"prometheus.googleapis.com": 0, "workload.googleapis.com": TOTAL_METRIC_BYTES},
 )
 
 LOG_BILLING_MONTHLY = _make_cumulative_timeseries_response(

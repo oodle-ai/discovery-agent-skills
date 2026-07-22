@@ -169,6 +169,17 @@ DELTA_AGGREGATION = {
     "aggregation.crossSeriesReducer": "REDUCE_SUM",
 }
 
+# Google Managed Prometheus metrics live under this metric domain.
+GMP_DOMAIN = "prometheus.googleapis.com"
+
+# Group metric ingestion by metric_domain so GMP (Managed Prometheus) is isolated
+# from Stackdriver/agent/kubernetes metrics — each domain bills separately, and a
+# metric dual-written to more than one domain is counted once per domain.
+DOMAIN_AGGREGATION = {
+    **DELTA_AGGREGATION,
+    "aggregation.groupByFields": "metric.label.metric_domain",
+}
+
 
 def query_timeseries(
     client: HttpClient,
@@ -388,6 +399,20 @@ def sum_delta_timeseries(results: dict[str, Any], prefix: str) -> float:
                 v = point.get("value", {})
                 total += float(v.get("int64Value", 0))
     return total
+
+
+def domain_totals(results: dict[str, Any], prefix: str) -> dict[str, float]:
+    """Sum DELTA int64 points per metric_domain across projects (for queries
+    grouped by metric.label.metric_domain). Isolates GMP from other domains."""
+    out: dict[str, float] = {}
+    for key, val in results.items():
+        if not key.startswith(prefix) or not isinstance(val, dict):
+            continue
+        for ts in val.get("timeSeries", []):
+            dom = ts.get("metric", {}).get("labels", {}).get("metric_domain", "(unset)")
+            for point in ts.get("points", []):
+                out[dom] = out.get(dom, 0.0) + float(point.get("value", {}).get("int64Value", 0))
+    return out
 
 
 def sum_latest_cumulative(results: dict[str, Any], prefix: str) -> float | None:
@@ -752,6 +777,35 @@ def derive_cost(summary: SummaryWriter) -> None:
     )
 
 
+def add_metric_domain_inventory(
+    results: dict[str, Any], summary: SummaryWriter, lookback_s: int
+) -> None:
+    """Per-metric-domain samples/bytes breakdown, isolating Managed Prometheus.
+
+    GMP (prometheus.googleapis.com) bills by samples and separately from
+    Stackdriver/agent/kubernetes metrics, so a single total hides which slice the
+    volume is in. Rendered as a deep-dive table.
+    """
+    samples = domain_totals(results, "billing_samples_")
+    byts = domain_totals(results, "metric_billing_bytes_")
+    if not samples and not byts:
+        return
+    days = (lookback_s / 86400.0) or 1.0
+    domains = sorted(set(samples) | set(byts), key=lambda d: -samples.get(d, 0.0))
+    summary.inventory["metric_domains"] = [
+        {
+            "domain": d,
+            "samples_per_sec": round(samples.get(d, 0.0) / lookback_s, 2) if lookback_s else 0.0,
+            "gb_per_day": round(byts.get(d, 0.0) / 1e9 / days, 3),
+        }
+        for d in domains
+    ]
+    summary.inventory["gmp_metric_samples_per_sec"] = (
+        round(samples.get(GMP_DOMAIN, 0.0) / lookback_s, 2) if lookback_s else 0.0
+    )
+    summary.inventory["gmp_metric_gb_per_day"] = round(byts.get(GMP_DOMAIN, 0.0) / 1e9 / days, 3)
+
+
 def build_summary(
     results: dict[str, Any],
     fetches: dict[str, FetchResult],
@@ -762,6 +816,7 @@ def build_summary(
     derive_metrics(results, fetches, summary, projects)
     derive_samples(results, fetches, summary, projects, lookback_s)
     derive_metric_bytes(results, fetches, summary, projects, lookback_s)
+    add_metric_domain_inventory(results, summary, lookback_s)
     derive_logs(results, fetches, summary, projects, lookback_s)
     derive_traces(results, fetches, summary, projects, lookback_s)
     derive_alerts(results, fetches, summary, projects)
@@ -955,9 +1010,9 @@ def main() -> int:
                 # are reduced server-side; the cumulative monthly meter is not.
                 ts_metrics = [
                     ("billing_samples", "monitoring.googleapis.com/billing/samples_ingested",
-                     "billing samples_ingested", DELTA_AGGREGATION),
+                     "billing samples_ingested", DOMAIN_AGGREGATION),
                     ("metric_billing_bytes", "monitoring.googleapis.com/billing/bytes_ingested",
-                     "metric billing bytes_ingested", DELTA_AGGREGATION),
+                     "metric billing bytes_ingested", DOMAIN_AGGREGATION),
                     ("log_billing_ingest", "logging.googleapis.com/billing/bytes_ingested",
                      "log billing bytes_ingested", DELTA_AGGREGATION),
                     ("log_billing_monthly",

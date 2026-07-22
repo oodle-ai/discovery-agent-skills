@@ -37,6 +37,15 @@ projects.
 in a `PASS/FAIL` log and recorded as a Coverage & Gaps entry, so incomplete
 project coverage is never silent.
 
+**Per-domain metric breakdown (GMP isolation).** The metric samples/bytes
+queries group by `metric.label.metric_domain`, so `inventory.metric_domains`
+breaks ingestion down per domain — `prometheus.googleapis.com` (Google Managed
+Prometheus), `workload.googleapis.com` (Stackdriver), `kubernetes.io`,
+`agent.googleapis.com`, … — and `gmp_metric_samples_per_sec` isolates the GMP
+slice. GMP bills by samples, so it typically shows 0 in the bytes column. Each
+domain is billed separately, so a metric dual-written to two domains is counted
+once per domain.
+
 ## Monthly usage-by-SKU export
 
 For usage reviews you often want per-signal volume broken out by **calendar
