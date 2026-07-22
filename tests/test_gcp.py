@@ -26,10 +26,12 @@ def mock_gcp(respx_mock, auth_status=200):
         metric_filter = request.url.params.get("filter", "")
         if "billing/samples_ingested" in metric_filter:
             return httpx.Response(200, json=fx.BILLING_SAMPLES)
-        elif "billing/bytes_ingested" in metric_filter:
-            return httpx.Response(200, json=fx.LOG_BILLING_INGEST)
+        elif "monitoring.googleapis.com/billing/bytes_ingested" in metric_filter:
+            return httpx.Response(200, json=fx.METRIC_BILLING_BYTES)
         elif "billing/monthly_bytes_ingested" in metric_filter:
             return httpx.Response(200, json=fx.LOG_BILLING_MONTHLY)
+        elif "logging.googleapis.com/billing/bytes_ingested" in metric_filter:
+            return httpx.Response(200, json=fx.LOG_BILLING_INGEST)
         elif "billing/spans_ingested" in metric_filter:
             return httpx.Response(200, json=fx.TRACE_BILLING)
         return httpx.Response(200, json={"timeSeries": []})
@@ -101,6 +103,11 @@ class TestGcpCollector:
             fx.TOTAL_LOG_BYTES / 1e9 / fx.LOOKBACK_DAYS, rel=0.01
         )
 
+        # metric bytes (GMP): 35 GB / 7 days = 5.0 GB/day
+        assert figs["metrics.ingest_gb_per_day"]["value"] == pytest.approx(
+            fx.TOTAL_METRIC_BYTES / 1e9 / fx.LOOKBACK_DAYS, rel=0.01
+        )
+
         # stored: 150 GB (estimated)
         assert figs["logs.stored_gb"]["value"] == pytest.approx(
             fx.MONTHLY_LOG_BYTES / 1e9, rel=0.01
@@ -160,6 +167,55 @@ class TestGcpCollector:
         # metric descriptors and alert policies still work (separate routes)
         assert figs["metrics.total_count"]["status"] == "ok"
         assert figs["alerts.monitor_count"]["status"] == "ok"
+        # the failed access preflight is surfaced as a gap, not silent
+        gap = next(g for g in summary["gaps"] if g["area"] == "environment")
+        assert "access preflight" in gap["detail"]
+        assert "test-project-1" in gap["detail"]
+
+    def test_metric_domain_breakdown_isolates_gmp(
+        self, gcp_collect, tmp_path, monkeypatch, respx_mock
+    ):
+        summary = run_collector(gcp_collect, tmp_path, monkeypatch, respx_mock)
+        inv = summary["inventory"]
+        domains = {d["domain"]: d for d in inv["metric_domains"]}
+        assert "prometheus.googleapis.com" in domains  # GMP present
+        assert "kubernetes.io" in domains
+        # GMP samples isolated: 500000 / (7*86400) samples/sec
+        assert inv["gmp_metric_samples_per_sec"] == pytest.approx(
+            fx.GMP_SAMPLES / fx.LOOKBACK_S, rel=0.01
+        )
+        # GMP bills by samples -> 0 bytes
+        assert inv["gmp_metric_gb_per_day"] == 0.0
+
+    def test_metric_queries_grouped_by_domain(
+        self, gcp_collect, tmp_path, monkeypatch, respx_mock
+    ):
+        run_collector(gcp_collect, tmp_path, monkeypatch, respx_mock)
+        samples_call = next(
+            c for c in respx_mock.calls
+            if "/timeSeries" in c.request.url.path
+            and "samples_ingested" in c.request.url.params.get("filter", "")
+            and "aggregation.perSeriesAligner" in c.request.url.params  # skip preflight
+            and c.request.url.params.get("aggregation.groupByFields")
+        )
+        assert samples_call.request.url.params.get(
+            "aggregation.groupByFields") == "metric.label.metric_domain"
+
+    def test_billing_queries_are_aggregated_server_side(
+        self, gcp_collect, tmp_path, monkeypatch, respx_mock
+    ):
+        # the DELTA volume metrics must carry server-side aggregation params so
+        # busy projects don't exceed Google's response-size limit
+        run_collector(gcp_collect, tmp_path, monkeypatch, respx_mock)
+        ts_calls = [
+            c for c in respx_mock.calls
+            if "/timeSeries" in c.request.url.path
+            and "samples_ingested" in c.request.url.params.get("filter", "")
+        ]
+        assert ts_calls, "expected a samples_ingested timeSeries call"
+        params = ts_calls[-1].request.url.params
+        assert params.get("aggregation.perSeriesAligner") == "ALIGN_DELTA"
+        assert params.get("aggregation.crossSeriesReducer") == "REDUCE_SUM"
 
     def test_report_only_recomputes_from_evidence(
         self, gcp_collect, tmp_path, monkeypatch, respx_mock
@@ -194,12 +250,12 @@ class TestGcpCollector:
         evidence_dir = tmp_path / "out" / "evidence"
         assert evidence_dir.exists()
         evidence_files = list(evidence_dir.glob("*.json"))
-        # 9 evidence files: _projects, metric_descriptors, billing_samples,
-        # log_billing_ingest, log_billing_monthly, trace_billing,
-        # alert_policies, log_buckets, log_sinks
-        assert len(evidence_files) == 9
+        # 10 evidence files: _projects, metric_descriptors, billing_samples,
+        # metric_billing_bytes, log_billing_ingest, log_billing_monthly,
+        # trace_billing, alert_policies, log_buckets, log_sinks
+        assert len(evidence_files) == 10
         manifest = json.loads((tmp_path / "out" / "manifest.json").read_text())
-        assert len(manifest) == 9
+        assert len(manifest) == 10
 
     def test_custom_metric_prefix_breakdown(
         self, gcp_collect, tmp_path, monkeypatch, respx_mock

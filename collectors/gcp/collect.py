@@ -61,6 +61,9 @@ EXPECTED = [
     ExpectedFigure(
         "metrics.samples_per_sec", "GCP metric samples ingested", "samples/sec", "metrics"
     ),
+    ExpectedFigure(
+        "metrics.ingest_gb_per_day", "GCP metric bytes ingested (GMP)", "GB/day", "metrics"
+    ),
     ExpectedFigure("logs.ingest_gb_per_day", "Cloud Logging ingestion", "GB/day", "logs"),
     ExpectedFigure("logs.stored_gb", "Cloud Logging stored (month to date)", "GB", "logs"),
     ExpectedFigure("alerts.monitor_count", "Cloud Monitoring alert policies", "policies", "alerts"),
@@ -154,13 +157,42 @@ def paginated_list(
     return all_items, FetchResult(ok=True, data=all_items)
 
 
+# Server-side aggregation for DELTA volume metrics. Without it a raw view=FULL
+# pull of e.g. billing/samples_ingested over 30d for a busy project returns a
+# response so large Google rejects it (the ~200 MB limit) — which is why metric
+# ingestion came back for only the smallest project. ALIGN_DELTA into daily
+# buckets + REDUCE_SUM across series collapses the response to a handful of
+# points, so every project succeeds and the total is unchanged.
+DELTA_AGGREGATION = {
+    "aggregation.alignmentPeriod": "86400s",
+    "aggregation.perSeriesAligner": "ALIGN_DELTA",
+    "aggregation.crossSeriesReducer": "REDUCE_SUM",
+}
+
+# Google Managed Prometheus metrics live under this metric domain.
+GMP_DOMAIN = "prometheus.googleapis.com"
+
+# Group metric ingestion by metric_domain so GMP (Managed Prometheus) is isolated
+# from Stackdriver/agent/kubernetes metrics — each domain bills separately, and a
+# metric dual-written to more than one domain is counted once per domain.
+DOMAIN_AGGREGATION = {
+    **DELTA_AGGREGATION,
+    "aggregation.groupByFields": "metric.label.metric_domain",
+}
+
+
 def query_timeseries(
     client: HttpClient,
     project: str,
     metric_type: str,
     lookback_s: int,
+    aggregation: dict[str, str] | None = None,
 ) -> FetchResult:
-    """Query Cloud Monitoring timeSeries for a billing/usage metric."""
+    """Query Cloud Monitoring timeSeries for a billing/usage metric.
+
+    Pass `aggregation` (e.g. DELTA_AGGREGATION) to have Google reduce the series
+    server-side before responding — required for high-volume DELTA metrics.
+    """
     now = datetime.now(UTC)
     start = now - timedelta(seconds=lookback_s)
     path = f"/v3/projects/{project}/timeSeries"
@@ -170,10 +202,43 @@ def query_timeseries(
         "interval.endTime": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
         "view": "FULL",
     }
+    if aggregation:
+        params.update(aggregation)
     items, res = paginated_list(client, path, "timeSeries", params)
     if not res.ok:
         return res
     return FetchResult(ok=True, data={"timeSeries": items})
+
+
+def preflight_projects(
+    mon_client: HttpClient, projects: list[str]
+) -> tuple[list[str], list[dict[str, Any]]]:
+    """Verify monitoring.timeSeries.list access per project before collecting.
+
+    A cheap 1-day aggregated query exercises the exact permission the real run
+    needs. Projects that fail are returned separately (not silently included as
+    zero) so incomplete coverage is surfaced as a gap rather than hidden.
+    """
+    passed: list[str] = []
+    failed: list[dict[str, Any]] = []
+    print("access check (monitoring.timeSeries.list):")
+    for project in projects:
+        res = query_timeseries(
+            mon_client, project,
+            "monitoring.googleapis.com/billing/samples_ingested",
+            86400, DELTA_AGGREGATION,
+        )
+        if res.ok:
+            passed.append(project)
+            print(f"  PASS  {project}")
+        else:
+            failed.append({
+                "project": project,
+                "reason": res.gap_reason or "api_error",
+                "error": res.error or "unknown",
+            })
+            print(f"  FAIL  {project}: {res.error}")
+    return passed, failed
 
 
 # ── collection ─────────────────────────────────────────────────────────
@@ -210,11 +275,12 @@ def _collect_timeseries(
     lookback_s: int,
     ev: EvidenceWriter,
     results: dict[str, Any],
+    aggregation: dict[str, str] | None = None,
 ) -> tuple[str, FetchResult]:
     """Collect a single billing/usage timeSeries metric for one project."""
     key = f"{key_prefix}_{safe_project(project)}"
     print(f"collecting {label} ({project})")
-    res = query_timeseries(mon_client, project, metric_type, lookback_s)
+    res = query_timeseries(mon_client, project, metric_type, lookback_s, aggregation)
     if res.ok:
         results[key] = res.data
         ev.write(
@@ -333,6 +399,20 @@ def sum_delta_timeseries(results: dict[str, Any], prefix: str) -> float:
                 v = point.get("value", {})
                 total += float(v.get("int64Value", 0))
     return total
+
+
+def domain_totals(results: dict[str, Any], prefix: str) -> dict[str, float]:
+    """Sum DELTA int64 points per metric_domain across projects (for queries
+    grouped by metric.label.metric_domain). Isolates GMP from other domains."""
+    out: dict[str, float] = {}
+    for key, val in results.items():
+        if not key.startswith(prefix) or not isinstance(val, dict):
+            continue
+        for ts in val.get("timeSeries", []):
+            dom = ts.get("metric", {}).get("labels", {}).get("metric_domain", "(unset)")
+            for point in ts.get("points", []):
+                out[dom] = out.get(dom, 0.0) + float(point.get("value", {}).get("int64Value", 0))
+    return out
 
 
 def sum_latest_cumulative(results: dict[str, Any], prefix: str) -> float | None:
@@ -463,6 +543,50 @@ def derive_samples(
             source_api="GET /v3/projects/*/timeSeries"
             " (monitoring.googleapis.com/billing/samples_ingested)",
             evidence_files=evidence,
+            notes=notes,
+        )
+    )
+
+
+def derive_metric_bytes(
+    results: dict[str, Any],
+    fetches: dict[str, FetchResult],
+    summary: SummaryWriter,
+    projects: list[str],
+    lookback_s: int,
+) -> None:
+    status, failed = project_status(fetches, "metric_billing_bytes_", projects)
+    total_bytes = sum_delta_timeseries(results, "metric_billing_bytes_")
+    lookback_days = lookback_s / 86400.0
+
+    if total_bytes == 0 and status == "unavailable":
+        res = next(
+            (fetches[f"metric_billing_bytes_{safe_project(p)}"] for p in projects
+             if fetches.get(f"metric_billing_bytes_{safe_project(p)}")),
+            None,
+        )
+        reason = res.gap_reason if res and res.gap_reason else "not_configured"
+        detail = (
+            res.error if res and res.error
+            else "monitoring billing/bytes_ingested returned no data"
+        )
+        summary.mark_unavailable("metrics.ingest_gb_per_day", reason, detail)
+        return
+
+    notes = f"failed projects: {', '.join(failed)}" if failed else None
+    gb_per_day = total_bytes / 1e9 / lookback_days if lookback_days > 0 else 0.0
+    summary.add_figure(
+        Figure(
+            id="metrics.ingest_gb_per_day",
+            label="GCP metric bytes ingested (GMP)",
+            value=round(gb_per_day, 2),
+            unit="GB/day",
+            status=status,
+            method=f"sum of billing/bytes_ingested DELTA points / {lookback_days:.1f} days, "
+            "bytes -> GB (1e9)",
+            source_api="GET /v3/projects/*/timeSeries"
+            " (monitoring.googleapis.com/billing/bytes_ingested)",
+            evidence_files=evidence_files_for(results, "metric_billing_bytes_"),
             notes=notes,
         )
     )
@@ -653,6 +777,35 @@ def derive_cost(summary: SummaryWriter) -> None:
     )
 
 
+def add_metric_domain_inventory(
+    results: dict[str, Any], summary: SummaryWriter, lookback_s: int
+) -> None:
+    """Per-metric-domain samples/bytes breakdown, isolating Managed Prometheus.
+
+    GMP (prometheus.googleapis.com) bills by samples and separately from
+    Stackdriver/agent/kubernetes metrics, so a single total hides which slice the
+    volume is in. Rendered as a deep-dive table.
+    """
+    samples = domain_totals(results, "billing_samples_")
+    byts = domain_totals(results, "metric_billing_bytes_")
+    if not samples and not byts:
+        return
+    days = (lookback_s / 86400.0) or 1.0
+    domains = sorted(set(samples) | set(byts), key=lambda d: -samples.get(d, 0.0))
+    summary.inventory["metric_domains"] = [
+        {
+            "domain": d,
+            "samples_per_sec": round(samples.get(d, 0.0) / lookback_s, 2) if lookback_s else 0.0,
+            "gb_per_day": round(byts.get(d, 0.0) / 1e9 / days, 3),
+        }
+        for d in domains
+    ]
+    summary.inventory["gmp_metric_samples_per_sec"] = (
+        round(samples.get(GMP_DOMAIN, 0.0) / lookback_s, 2) if lookback_s else 0.0
+    )
+    summary.inventory["gmp_metric_gb_per_day"] = round(byts.get(GMP_DOMAIN, 0.0) / 1e9 / days, 3)
+
+
 def build_summary(
     results: dict[str, Any],
     fetches: dict[str, FetchResult],
@@ -662,6 +815,8 @@ def build_summary(
 ) -> None:
     derive_metrics(results, fetches, summary, projects)
     derive_samples(results, fetches, summary, projects, lookback_s)
+    derive_metric_bytes(results, fetches, summary, projects, lookback_s)
+    add_metric_domain_inventory(results, summary, lookback_s)
     derive_logs(results, fetches, summary, projects, lookback_s)
     derive_traces(results, fetches, summary, projects, lookback_s)
     derive_alerts(results, fetches, summary, projects)
@@ -669,6 +824,23 @@ def build_summary(
 
     inv = summary.inventory
     inv["projects_collected"] = projects
+
+    # Projects that failed the access preflight and were skipped — never silent
+    access_failed = results.get("_access_failed")
+    if access_failed is None:  # report-only: recover from saved _projects evidence
+        access_failed = (results.get("_projects") or {}).get("failed_access", [])
+    access_failed = access_failed or []
+    if access_failed:
+        inv["projects_failed_access"] = [f["project"] for f in access_failed]
+        names = ", ".join(f["project"] for f in access_failed)
+        summary.add_gap(
+            "environment", [], access_failed[0].get("reason", "permission_denied"),
+            f"{len(access_failed)} of {len(projects)} project(s) failed the "
+            f"monitoring access preflight; their usage figures are missing or "
+            f"partial: {names}. First error: {access_failed[0].get('error', '')}",
+            remediation="grant roles/monitoring.viewer on those projects (or remove "
+            "the wrong IDs), then re-run so all projects are included",
+        )
 
     # namespace breakdown (top 30)
     all_descriptors = all_project_items(results, "metric_descriptors_", "metricDescriptors")
@@ -805,8 +977,8 @@ def main() -> int:
             print("ERROR: no projects selected")
             return 2
 
-        print(f"projects: {', '.join(projects)}")
-        ev.write("_projects", {"projects": projects}, source_api="gcloud projects list / --project")
+        requested_projects = projects
+        print(f"projects requested: {', '.join(requested_projects)}")
 
         with HttpClient(
             MONITORING_BASE,
@@ -819,25 +991,40 @@ def main() -> int:
             timeout_s=args.timeout,
             verify=not args.insecure,
         ) as log_client:
-            for project in projects:
+            # Preflight every project so inaccessible ones are surfaced as a gap
+            # (never silently zeroed). We still attempt all requested projects —
+            # descriptors/alerts don't need timeSeries — and failures also show
+            # per-figure; the preflight just makes coverage explicit up front.
+            _passed, failed = preflight_projects(mon_client, requested_projects)
+            results["_access_failed"] = failed
+            ev.write(
+                "_projects",
+                {"projects": requested_projects, "failed_access": failed},
+                source_api="gcloud projects list / --project + access preflight",
+            )
+            for project in requested_projects:
                 fetches[f"metric_descriptors_{safe_project(project)}"] = (
                     collect_metric_descriptors(mon_client, project, ev, results)
                 )
+                # (prefix, metric_type, label, aggregation). DELTA volume metrics
+                # are reduced server-side; the cumulative monthly meter is not.
                 ts_metrics = [
                     ("billing_samples", "monitoring.googleapis.com/billing/samples_ingested",
-                     "billing samples_ingested"),
+                     "billing samples_ingested", DOMAIN_AGGREGATION),
+                    ("metric_billing_bytes", "monitoring.googleapis.com/billing/bytes_ingested",
+                     "metric billing bytes_ingested", DOMAIN_AGGREGATION),
                     ("log_billing_ingest", "logging.googleapis.com/billing/bytes_ingested",
-                     "log billing bytes_ingested"),
+                     "log billing bytes_ingested", DELTA_AGGREGATION),
                     ("log_billing_monthly",
                      "logging.googleapis.com/billing/monthly_bytes_ingested",
-                     "log billing monthly_bytes_ingested"),
+                     "log billing monthly_bytes_ingested", None),
                     ("trace_billing", "cloudtrace.googleapis.com/billing/spans_ingested",
-                     "trace billing spans_ingested"),
+                     "trace billing spans_ingested", DELTA_AGGREGATION),
                 ]
-                for prefix, metric_type, label in ts_metrics:
+                for prefix, metric_type, label, agg in ts_metrics:
                     key, res = _collect_timeseries(
                         mon_client, project, prefix, metric_type,
-                        label, lookback_s, ev, results,
+                        label, lookback_s, ev, results, agg,
                     )
                     fetches[key] = res
                 fetches[f"alert_policies_{safe_project(project)}"] = (
